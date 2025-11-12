@@ -2,7 +2,7 @@
 
 <b><h1>Voter Data Cleaning & Fake Voter Detection</h1></b>
 
-✅ Requirements
+✅ Requirements<br>
 Make sure the following Python packages are installed:
 
 ```bash
@@ -29,9 +29,9 @@ Required columns:
 Serial No, Name, Guardian's Name, ID Card No., OldWard No/ House No., House Name, Gender, Age
 ```
 
-Update the file path inside the script if needed.
-🧹 Data Cleaning Features
-✅ Standardizes & fixes missing values
+Update the file path inside the script if needed.<br><hr>
+🧹 Data Cleaning Features<br>
+✅ Standardizes & fixes missing values<br>
 
 * `Name`, `Guardian's Name`, `House Name` → filled with `"UNKNOWN"`, uppercased
 * `Age` → missing replaced with `0`
