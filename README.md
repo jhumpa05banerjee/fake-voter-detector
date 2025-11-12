@@ -6,7 +6,7 @@
 Make sure the following Python packages are installed:
 
 ```bash
-pip install pandas numpy scikit-learn
+pip install pandas numpy scikit-learn xgboost imbalanced-learn
 ````
 
 ---
