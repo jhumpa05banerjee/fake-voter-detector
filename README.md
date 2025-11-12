@@ -2,7 +2,7 @@
 
 <b><h1>Voter Data Cleaning & Fake Voter Detection</h1></b>
 
-✅ Requirements<br>
+<h2>✅ Requirements<br></h2>
 Make sure the following Python packages are installed:
 
 ```bash
@@ -10,12 +10,12 @@ pip install pandas numpy scikit-learn
 ````
 
 ---
-📌 Project Overview
+<h2>📌 Project Overview</h2>
 
 This script loads a raw voters dataset, cleans and standardizes important fields, detects anomalies using rule-based logic, and identifies potential **fake voters** using an **Isolation Forest (unsupervised ML model)**.
 
 ---
-📂 Input
+<h2>📂 Input</h2>
 
 Place your input CSV named:
 
@@ -30,14 +30,14 @@ Serial No, Name, Guardian's Name, ID Card No., OldWard No/ House No., House Name
 ```
 
 Update the file path inside the script if needed.<br><hr>
-🧹 Data Cleaning Features<br>
-✅ Standardizes & fixes missing values<br>
+<h2>🧹 Data Cleaning Features<br></h2>
+✅ Standardizes & fixes missing values<br><br>
 
 * `Name`, `Guardian's Name`, `House Name` → filled with `"UNKNOWN"`, uppercased
 * `Age` → missing replaced with `0`
 * `Gender` → standardized to `M`, `F`, or `U`
 * `ID Card No.` → cleaned and normalized
-✅ Voter ID Classification
+✅ <h3>Voter ID Classification</h3>
 
 | Format Example | Recognized As | Cleaned Output |
 | -------------- | ------------- | -------------- |
@@ -48,7 +48,7 @@ Update the file path inside the script if needed.<br><hr>
 
 ---
 
- 🔍 Rule-Based Anomaly Detection
+<h2>🔍 Rule-Based Anomaly Detection</h2>
 
 A voter is flagged if any of these issues are detected:
 
@@ -70,7 +70,7 @@ Fake_Voter_Flag   → 1 if anomaly_count ≥ threshold (default: 1)
 
 ---
 
-🤖 ML-Based Detection (Isolation Forest)
+<h2>🤖 ML-Based Detection (Isolation Forest)</h2>
 
 * Uses features: `Age`, `Gender`, `ID_Type`, `Anomaly_Count`
 * Converts categorical → numeric with LabelEncoder
@@ -85,7 +85,7 @@ Final_Fake_Voter  → 1 if rule-based OR ML says anomaly
 
 ---
 
-📤 Generated Output Files
+<h2>📤 Generated Output Files</h2>
 
 | File                           | Description                        |
 | ------------------------------ | ---------------------------------- |
@@ -95,7 +95,7 @@ Final_Fake_Voter  → 1 if rule-based OR ML says anomaly
 
 
 
-✅ Final Columns in Output
+<h2>✅ Final Columns in Output</h2>
 
 ```
 Serial No
@@ -117,7 +117,7 @@ Final_Fake_Voter
 
 ---
 
-▶️ How to Run
+<h2>▶️ How to Run</h2>
 
 1️⃣ Save script as `voter_cleaning.py`
 2️⃣ Make sure CSV path inside script is correct
