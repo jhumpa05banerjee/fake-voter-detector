@@ -1,6 +1,6 @@
 
 
-✅ Voter Data Cleaning & Fake Voter Detection
+<b><h1>Voter Data Cleaning & Fake Voter Detection</h1></b>
 
 ✅ Requirements
 Make sure the following Python packages are installed:
