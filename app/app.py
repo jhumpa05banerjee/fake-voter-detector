@@ -12,7 +12,9 @@ uploaded = st.file_uploader("Upload VOTERS.csv", type=["csv"])
 if uploaded:
     st.success("File uploaded successfully!")
 
+    uploaded.seek(0)   # ← VERY IMPORTANT
     df = process_voter_csv(uploaded)
+
 
     st.subheader("Processed Voter Data")
     st.dataframe(df)
