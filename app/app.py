@@ -34,29 +34,20 @@ if model_data:
     if uploaded:
 
         df = pd.read_csv(uploaded)
-
         st.subheader("📌 Uploaded Data")
         st.dataframe(df.head())
 
         st.info("Cleaning data... Please wait...")
 
-        # ---- IMPORT FUNCTIONS ----
         from unsupervised5 import (
-            clean_voter_data,
-            engineer_anomaly_features,
-            prepare_features_for_model,
-            create_ensemble_scores,
+            clean_voter_data, engineer_anomaly_features,
+            prepare_features_for_model, create_ensemble_scores,
             generate_predictions
         )
 
-        # ✔ FIX: Pass dataframe instead of file object
-        df_clean = clean_voter_data(df)
-
-        # ✔ Feature engineering
+        df_clean = clean_voter_data(uploaded)   # FIXED
         df_feat = engineer_anomaly_features(df_clean)
-
-        # ✔ Use model’s scaler + feature columns
-        X_scaled = scaler.transform(df_feat[feature_cols])
+        X_scaled, feature_cols, scaler = prepare_features_for_model(df_feat)
 
         # --------- MODEL SCORES ----------
         iso_scores = iso_forest.score_samples(X_scaled)
