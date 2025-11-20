@@ -17,6 +17,57 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 
+
+def normalize_columns(df):
+    """
+    Normalize raw CSV column names to a safe canonical form:
+    strip, lower, replace non-alphanumeric with underscore, collapse multiple underscores.
+    """
+    cols = (
+        df.columns
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .str.replace(r'[^a-z0-9]+', '_', regex=True)
+        .str.replace(r'_{2,}', '_', regex=True)
+        .str.strip('_')
+    )
+    df.columns = cols
+    return df
+
+def map_columns(df):
+    """
+    Return mapping: standard_field -> actual_normalized_column_name (or None)
+    """
+    # Ensure columns already normalized
+    df = df.copy()
+    df = normalize_columns(df)
+
+    keyword_map = {
+        "age": ["age", "voter_age", "age_years"],
+        "name": ["name", "voter_name", "full_name"],
+        "guardian": ["guardian", "guardian_name", "father_name", "husband_name", "parent_name"],
+        "gender": ["gender", "sex"],
+        "id": ["id", "epic", "voter_id", "id_card_no", "epic_no", "id_number"],
+        "serial_no": ["serial", "serial_no", "s_no", "sno", "sl_no"],
+        "house_name": ["house_name", "building", "home", "house"],
+        "house_no": ["old_ward_name", "ward", "house_no", "address", "house_no_"]
+    }
+
+    mapped = {}
+    for std_col, keywords in keyword_map.items():
+        found = None
+        for col in df.columns:
+            for key in keywords:
+                if key in col:
+                    found = col
+                    break
+            if found:
+                break
+        mapped[std_col] = found
+
+    print("[+] Column Mapping:", mapped)
+    return mapped
 # ---------------------------------------
 # ADD THIS FUNCTION HERE
 def anomaly_detection(df_results):
@@ -68,141 +119,107 @@ def get_id_type(id_str):
     else:
         return "UNKNOWN"
     
-def map_columns(df):
-
-    # Normalize all columns
-    df.columns = df.columns.str.lower().str.strip().str.replace(r'[^a-z0-9 ]', '', regex=True)
-
-    keyword_map = {
-        "age": ["age", "voter age", "years"],
-        "name": ["name", "voter name", "full name"],
-        "guardian": ["guardian", "father", "parent", "guardian name", "father name"],
-        "gender": ["gender", "sex"],
-        "id": ["id", "epic", "voter id", "id card no", "epic no", "epic number", "id number"],
-        "serial_no": ["serial", "serial no", "sno", "slno"],
-        "house_name": ["house name", "building", "home"],
-        "house_no": ["old ward name", "ward", "house no", "address"],
-    }
-
-    mapped = {}
-
-    for std_col, keywords in keyword_map.items():
-        found = None
-        for col in df.columns:
-            for key in keywords:
-                if key in col:
-                    found = col
-                    break
-            if found:
-                break
-        mapped[std_col] = found
-
-    print("[+] Column Mapping:", mapped)
-    return mapped
-
 
 def clean_voter_data(filepath):
+    """
+    Load CSV path/file-like, normalize column names, auto-map required fields,
+    and return a standardized dataframe with these columns:
+    ['Age','Name','Guardian','Gender','ID','Serial_No','House_Name','House_No','Cleaned_ID']
+    """
     print("[*] Loading raw voter data...")
-    df = pd.read_csv(filepath)
-    print(f"[+] Loaded {len(df)} voters")
+    df_raw = pd.read_csv(filepath)
+    print(f"[+] Loaded {len(df_raw)} voters")
 
-    print("[*] Cleaning voter data...")
+    # Normalize column names
+    df_raw = normalize_columns(df_raw)
 
-    mapping = map_columns(df)
+    # Map columns
+    mapping = map_columns(df_raw)
 
-    # Create unified standard dataframe
+    # Build standardized dataframe (use TitleCase keys to match rest of pipeline)
     df_std = pd.DataFrame()
+    df_std["Age"] = df_raw[mapping["age"]] if mapping["age"] else 0
+    df_std["Name"] = df_raw[mapping["name"]] if mapping["name"] else "UNKNOWN"
+    df_std["Guardian"] = df_raw[mapping["guardian"]] if mapping["guardian"] else "UNKNOWN"
+    df_std["Gender"] = df_raw[mapping["gender"]] if mapping["gender"] else "U"
+    df_std["ID"] = df_raw[mapping["id"]] if mapping["id"] else "UNKNOWN"
+    df_std["Serial_No"] = df_raw[mapping["serial_no"]] if mapping["serial_no"] else 0
+    df_std["House_Name"] = df_raw[mapping["house_name"]] if mapping["house_name"] else "UNKNOWN"
+    df_std["House_No"] = df_raw[mapping["house_no"]] if mapping["house_no"] else "UNKNOWN"
 
-    df_std["Age"] = df[mapping['age']] if mapping['age'] else 0
-    df_std["Name"] = df[mapping['name']] if mapping['name'] else "UNKNOWN"
-    df_std["Guardian"] = df[mapping['guardian']] if mapping['guardian'] else "UNKNOWN"
-    df_std["Gender"] = df[mapping['gender']] if mapping['gender'] else "U"
-    df_std["ID"] = df[mapping['id']] if mapping['id'] else "UNKNOWN"
-    df_std["Serial_No"] = df[mapping['serial_no']] if mapping['serial_no'] else 0
-    df_std["House_Name"] = df[mapping['house_name']] if mapping['house_name'] else "UNKNOWN"
-    df_std["House_No"] = df[mapping['house_no']] if mapping['house_no'] else "UNKNOWN"
-
-    # Apply type cleaning
+    # Type conversions + cleaning
     df_std["Age"] = pd.to_numeric(df_std["Age"], errors="coerce").fillna(0).astype(int)
-    df_std["Name"] = df_std["Name"].astype(str).str.upper().str.strip()
-    df_std["Guardian"] = df_std["Guardian"].astype(str).str.upper().str.strip()
-    df_std["Gender"] = df_std["Gender"].astype(str).str.upper().str.strip()
+    df_std["Name"] = df_std["Name"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
+    df_std["Guardian"] = df_std["Guardian"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
+    df_std["Gender"] = df_std["Gender"].astype(str).fillna("U").str.strip().str.upper()
+    df_std["ID"] = df_std["ID"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
+    df_std["Serial_No"] = pd.to_numeric(df_std["Serial_No"], errors="coerce").fillna(0).astype(int)
+    df_std["House_Name"] = df_std["House_Name"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
+    df_std["House_No"] = df_std["House_No"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
 
-    # Clean ID
-    df_std["Cleaned_ID"] = df_std["ID"].astype(str).str.replace(" ", "").str.upper()
+    # create Cleaned_ID (no spaces, uppercase)
+    df_std["Cleaned_ID"] = df_std["ID"].astype(str).str.replace(r'\s+', '', regex=True).str.upper().fillna("")
 
     print("[+] Cleaning completed")
     print("Columns now:", df_std.columns.tolist())
     print("Shape:", df_std.shape)
-
     return df_std
-
 
 def engineer_anomaly_features(df):
     print("[*] Engineering features for anomaly detection...")
 
     df_feat = df.copy()
 
-    # ------------ SAFE COLUMN CHECKS (no KeyError ever) ------------
-    safe_cols = {
-        "Age": 0,
-        "Name": "",
-        "Guardian": "",
-        "House_No": "",
-        "Gender": "",
-        "Cleaned_ID": "",
-        "ID": "",
-        "House_Name": "",
-    }
-
-    for col, default in safe_cols.items():
+    # Ensure required base cols exist (safety)
+    for col, default in [("Age",0),("Name",""),("Guardian",""),("House_No",""),("Gender",""),("ID",""),("Cleaned_ID",""),("House_Name","")]:
         if col not in df_feat.columns:
             df_feat[col] = default
 
-    # ============= BASIC AGE FEATURES =============
+    # Age features
     df_feat["age_below_18"] = (df_feat["Age"] < 18).astype(int)
     df_feat["age_above_100"] = (df_feat["Age"] > 100).astype(int)
     df_feat["age_anomaly"] = ((df_feat["Age"] < 18) | (df_feat["Age"] > 120)).astype(int)
 
-    # ============= MISSING FIELDS =============
-    df_feat["missing_name"] = (df_feat["Name"].astype(str).str.strip() == "").astype(int)
-    df_feat["missing_guardian"] = (df_feat["Guardian"].astype(str).str.strip() == "").astype(int)
-    df_feat["missing_house"] = (df_feat["House_No"].astype(str).str.strip() == "").astype(int)
-    df_feat["missing_gender"] = (df_feat["Gender"].astype(str).str.strip() == "").astype(int)
+    # Missing fields
+    df_feat["missing_name"] = (df_feat["Name"].astype(str).str.strip().str.upper() == "UNKNOWN").astype(int)
+    df_feat["missing_guardian"] = (df_feat["Guardian"].astype(str).str.strip().str.upper() == "UNKNOWN").astype(int)
+    df_feat["missing_house"] = (df_feat["House_No"].astype(str).str.strip().str.upper() == "UNKNOWN").astype(int)
+    df_feat["missing_gender"] = (df_feat["Gender"].astype(str).str.strip().str.upper() == "U").astype(int)
 
-    # ============= ID BASED FEATURES =============
+    # ID anomalies
     df_feat["id_anomaly"] = (
-        (df_feat["ID"].astype(str).str.strip() == "") |
-        (df_feat["Cleaned_ID"].astype(str).str.strip() == "")
-    ).astype(int)
+    (
+        df_feat["ID"].astype(str).str.strip().str.upper() == "UNKNOWN"
+    ) | (
+        df_feat["Cleaned_ID"].astype(str).str.strip() == ""
+    )
+).astype(int)
 
     df_feat["id_length"] = df_feat["Cleaned_ID"].astype(str).apply(len)
     df_feat["invalid_id_format"] = df_feat["id_length"].apply(lambda x: 1 if x != 10 else 0)
 
-    # ============= HOUSE NAME ANOMALY =============
+    # House name anomalies + lengths
     df_feat["house_name_length"] = df_feat["House_Name"].astype(str).apply(len)
     df_feat["house_name_anomaly"] = df_feat["house_name_length"].apply(lambda x: 1 if x < 3 else 0)
 
-    # ============= CROWDED HOUSE =============
-    df_feat["crowded_house"] = (
-        df_feat.groupby("House_No")["House_No"].transform("count") > 10
-    ).astype(int)
+    # Crowded house: count per House_No
+    df_feat["crowded_house"] = df_feat.groupby("House_No")["House_No"].transform("count")
+    df_feat["crowded_house"] = (df_feat["crowded_house"] > 10).astype(int)
 
-    # ============= DUPLICATE BASED =============
+    # Duplicates
     df_feat["duplicate_id"] = df_feat["Cleaned_ID"].duplicated(keep=False).astype(int)
+    df_feat["duplicate_combo"] = df_feat.duplicated(subset=["Name","Guardian","House_No"], keep=False).astype(int)
 
-    df_feat["duplicate_combo"] = df_feat.duplicated(
-        subset=["Name", "Guardian", "House_No"], keep=False
-    ).astype(int)
-
-    # ============= NAME / GUARDIAN LENGTH =============
+    # Lengths
     df_feat["name_length"] = df_feat["Name"].astype(str).apply(len)
     df_feat["guardian_length"] = df_feat["Guardian"].astype(str).apply(len)
+
+    # Backwards compatibility aliases (old model expects these names)
     df_feat["missing_houseno"] = df_feat["missing_house"]
 
-
-    print("[+] Feature engineering completed! Total features:", len(df_feat.columns))
+    print("[+] Feature engineering completed. Total features:", len(df_feat.columns))
     return df_feat
+
 
 
 
@@ -225,16 +242,14 @@ def load_and_prepare_data(filepath):
 
 
 def prepare_features_for_model(df_features):
-    
-    print("[*] Preparing features for modeling...")
-    
+    # exact feature list expected by model (keep same names as used when model was saved)
     feature_columns = [
         'age_below_18',
         'age_above_100',
         'age_anomaly',
         'missing_name',
         'missing_guardian',
-        'missing_houseno',
+        'missing_houseno',   # old name kept for compatibility
         'missing_gender',
         'id_anomaly',
         'invalid_id_format',
@@ -247,16 +262,19 @@ def prepare_features_for_model(df_features):
         'house_name_length',
         'id_length'
     ]
-    
+
+    # Ensure all columns exist (fill zeros if missing)
+    for col in feature_columns:
+        if col not in df_features.columns:
+            df_features[col] = 0
+
     X = df_features[feature_columns].copy()
     X = X.fillna(0)
-    
-    
+
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    
+
     print(f"[+] Features prepared: {X_scaled.shape[1]} features for {X_scaled.shape[0]} voters")
-    
     return X_scaled, feature_columns, scaler
 
 
