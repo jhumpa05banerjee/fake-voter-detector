@@ -4,78 +4,98 @@ import joblib
 
 st.set_page_config(page_title="Fake Voter Detector", layout="wide")
 
-# Title
-st.title("🗳️ Fake Voter Detection - Unsupervised ML Model")
 
-# Load model
 @st.cache_resource
 def load_model():
     try:
         data = joblib.load("anomaly_detector_model.joblib")
         return data
-    except:
-        st.error("Model file not found! Please run unsupervised.py first.")
+    except Exception:
+        st.error("❌ Model file not found! Please run unsupervised.py first to generate the model.")
         return None
+
+
+
+st.title("🗳️ Fake Voter Detection - Unsupervised ML Model")
 
 model_data = load_model()
 
-if model_data:
+if not model_data:
+    st.warning("⚠ Model not loaded. Train using unsupervised.py")
+    st.stop()
 
-    threshold = model_data["threshold"]
-    scaler = model_data["scaler"]
-    feature_cols = model_data["feature_columns"]
-    iso_forest = model_data["iso_forest"]
-    lof = model_data["lof"]
+st.success("✓ Model Loaded Successfully!")
 
-    st.success("Model Loaded Successfully!")
+threshold = model_data["threshold"]
+scaler = model_data["scaler"]
+feature_cols = model_data["feature_columns"]
+iso_forest = model_data["iso_forest"]
+lof = model_data["lof"]
 
-    uploaded = st.file_uploader("Upload voter CSV file", type=["csv"])
+uploaded = st.file_uploader("📤 Upload Voter CSV File", type=["csv"])
 
-    if uploaded:
+if not uploaded:
+    st.info("Please upload a CSV file to continue.")
+    st.stop()
 
-        df = pd.read_csv(uploaded)
-        st.subheader("📌 Uploaded Data")
-        st.dataframe(df.head())
 
-        st.info("Cleaning data... Please wait...")
 
-        from unsupervised5 import (
-            clean_voter_data, engineer_anomaly_features,
-            prepare_features_for_model, create_ensemble_scores,
-            generate_predictions
-        )
+from unsupervised5 import (
+    clean_voter_data,
+    engineer_anomaly_features,
+    prepare_features_for_model,
+    create_ensemble_scores,
+    generate_predictions,
+)
 
-        df_clean = clean_voter_data(uploaded)   # FIXED
-        df_feat = engineer_anomaly_features(df_clean)
-        X_scaled, feature_cols, scaler = prepare_features_for_model(df_feat)
 
-        # --------- MODEL SCORES ----------
-        iso_scores = iso_forest.score_samples(X_scaled)
 
-        lof.fit(X_scaled)               # ✔ LOF must be fitted before predicting
-        lof_scores = lof.negative_outlier_factor_
+st.info("⚙ Cleaning data... Please wait...")
 
-        iso_pred = iso_forest.predict(X_scaled)
-        lof_pred = lof.fit_predict(X_scaled)
 
-        # --------- ENSEMBLE -------------
-        ensemble_score, both_anomaly = create_ensemble_scores(
-            iso_scores, lof_scores, iso_pred, lof_pred
-        )
+df_clean = clean_voter_data(uploaded)
 
-        df_results = generate_predictions(df_clean, df_feat, ensemble_score, both_anomaly)
+st.subheader("📌 Cleaned Data Sample")
+st.dataframe(df_clean.head())
 
-        st.subheader("🔍 Detection Results")
-        st.dataframe(df_results.head(50))
 
-        st.download_button(
-            "Download Full Result CSV",
-            df_results.to_csv(index=False),
-            file_name="VOTERS_ANOMALY_RESULTS.csv",
-            mime="text/csv"
-        )
+df_feat = engineer_anomaly_features(df_clean)
 
-        st.success("✓ Analysis Complete!")
 
-else:
-    st.warning("Please train the model by running unsupervised.py")
+X_scaled, feature_cols_new, scaler_new = prepare_features_for_model(df_feat)
+
+
+
+
+iso_scores = iso_forest.score_samples(X_scaled)
+iso_pred = iso_forest.predict(X_scaled)
+
+
+lof.fit(X_scaled)  
+lof_scores = lof.negative_outlier_factor_
+lof_pred = lof.fit_predict(X_scaled)
+
+
+ensemble_score, both_anomaly = create_ensemble_scores(
+    iso_scores, lof_scores, iso_pred, lof_pred
+)
+
+
+df_results = generate_predictions(
+    df_clean, df_feat, ensemble_score, both_anomaly, threshold=threshold
+)
+
+-
+
+st.subheader("🔍 Detection Results (Top 50 Risky Records)")
+st.dataframe(df_results.head(50))
+
+
+st.download_button(
+    "⬇ Download Full Result CSV",
+    df_results.to_csv(index=False),
+    file_name="VOTERS_ANOMALY_RESULTS.csv",
+    mime="text/csv",
+)
+
+st.success("🎉 Analysis Complete!")
