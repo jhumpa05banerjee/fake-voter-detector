@@ -11,7 +11,7 @@ st.title("🗳️ Fake Voter Detection - Unsupervised ML Model")
 @st.cache_resource
 def load_model():
     try:
-        data = joblib.load("../anomaly_detector_model.joblib")
+        data = joblib.load("anomaly_detector_model.joblib")
         return data
     except:
         st.error("Model file not found! Please run unsupervised.py first.")
@@ -19,7 +19,6 @@ def load_model():
 
 model_data = load_model()
 
-# If model is loaded
 if model_data:
 
     threshold = model_data["threshold"]
@@ -33,28 +32,42 @@ if model_data:
     uploaded = st.file_uploader("Upload voter CSV file", type=["csv"])
 
     if uploaded:
+
         df = pd.read_csv(uploaded)
+
         st.subheader("📌 Uploaded Data")
         st.dataframe(df.head())
 
-        # --- CLEANING REQUIRES SAME FUNCTIONS ---
         st.info("Cleaning data... Please wait...")
 
-        from unsupervised import (
-            clean_voter_data, engineer_anomaly_features,
-            prepare_features_for_model, create_ensemble_scores,
+        # ---- IMPORT FUNCTIONS ----
+        from unsupervised5 import (
+            clean_voter_data,
+            engineer_anomaly_features,
+            prepare_features_for_model,
+            create_ensemble_scores,
             generate_predictions
         )
 
-        df_clean = clean_voter_data(uploaded)
-        df_feat = engineer_anomaly_features(df_clean)
-        X_scaled, feature_cols, scaler = prepare_features_for_model(df_feat)
+        # ✔ FIX: Pass dataframe instead of file object
+        df_clean = clean_voter_data(df)
 
+        # ✔ Feature engineering
+        df_feat = engineer_anomaly_features(df_clean)
+
+        # ✔ Use model’s scaler + feature columns
+        X_scaled = scaler.transform(df_feat[feature_cols])
+
+        # --------- MODEL SCORES ----------
         iso_scores = iso_forest.score_samples(X_scaled)
+
+        lof.fit(X_scaled)               # ✔ LOF must be fitted before predicting
         lof_scores = lof.negative_outlier_factor_
+
         iso_pred = iso_forest.predict(X_scaled)
         lof_pred = lof.fit_predict(X_scaled)
 
+        # --------- ENSEMBLE -------------
         ensemble_score, both_anomaly = create_ensemble_scores(
             iso_scores, lof_scores, iso_pred, lof_pred
         )
