@@ -60,6 +60,8 @@ from unsupervised5 import (
 # CLEANING + FEATURE ENGINEERING
 # ---------------------------------------------------------
 df_clean = clean_voter_data(uploaded)
+st.write("COLUMNS FOUND:", df_clean.columns.tolist())
+
 st.subheader("📌 Cleaned Data Sample")
 st.dataframe(df_clean.head())
 
@@ -135,7 +137,8 @@ except Exception as e:
 # ------------------ 4) TOP 10 SUSPICIOUS ------------------
 top10 = df_results.sort_values("Anomaly_Score", ascending=False).head(10)
 fig4, ax4 = plt.subplots(figsize=small)
-ax4.barh(top10["Serial No"], top10["Anomaly_Score"], color="red")
+ax4.barh(top10["Serial_No"], top10["Anomaly_Score"])
+
 ax4.invert_yaxis()
 ax4.set_title("Top 10 Suspicious Voters")
 st.pyplot(fig4)
