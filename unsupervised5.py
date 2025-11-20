@@ -1,18 +1,3 @@
-"""
-Fake Voter Detection using Unsupervised Anomaly Detection
-Models: Isolation Forest + Local Outlier Factor (LOF)
-Approach: Detect outliers/anomalies that deviate from normal voter patterns
-No labeled data needed - works perfectly for extreme imbalance (1200:2 ratio)
-
-DATA PIPELINE:
-1. Load raw VOTERS.csv
-2. Clean and standardize data (ID types, gender, names, etc.)
-3. Engineer anomaly detection features
-4. Train Isolation Forest + LOF models
-5. Create ensemble anomaly scores
-6. Output predictions and risk levels
-"""
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -27,12 +12,10 @@ import re
 import warnings
 warnings.filterwarnings('ignore')
 
-# ============================================================================
-# DATA CLEANING SECTION (from get-id-type.py)
-# ============================================================================
+
 
 def get_id_type(id_str):
-    """Classify ID format"""
+    
     if pd.isna(id_str):
         return "UNKNOWN"
     id_str = str(id_str).strip().upper()
@@ -46,34 +29,32 @@ def get_id_type(id_str):
         return "UNKNOWN"
 
 def clean_voter_id(id_str):
-    """Standardize voter ID values"""
+    
     if pd.isna(id_str):
         return ""
     id_str = str(id_str).strip().upper()
     if re.match(r'^[A-Z]{3}\d{7}$', id_str):
-        return id_str                     # already clean
+        return id_str                    
     elif re.match(r'^KL/\d+/\d+/\d+$', id_str):
-        return id_str.replace("/", "")     # remove slashes for uniformity
+        return id_str.replace("/", "")     
     elif re.match(r'^SECID[A-Z0-9]+$', id_str):
-        return "SYS_" + id_str[-6:]        # short system ID
+        return "SYS_" + id_str[-6:]        
     else:
         return ""
 
 def clean_voter_data(filepath):
-    """
-    Load raw VOTERS.csv and apply all data cleaning transformations
-    """
+
     print("[*] Loading raw voter data...")
     df = pd.read_csv(filepath)
     print(f"[+] Loaded {len(df)} voters")
     
     print("[*] Cleaning voter data...")
     
-    # -------- ID CARD CLEANING --------
+   
     df['ID_Type'] = df["ID Card No."].apply(get_id_type)
     df['Cleaned_ID'] = df["ID Card No."].apply(clean_voter_id)
     
-    # -------- FILL MISSING VALUES --------
+    
     df['Age'] = df['Age'].fillna(0).astype(int)
     df['Name'] = df['Name'].fillna("UNKNOWN").str.strip().str.upper()
     df["Guardian's Name"] = df["Guardian's Name"].fillna("UNKNOWN").str.strip().str.upper()
@@ -82,14 +63,14 @@ def clean_voter_data(filepath):
     df["House Name"] = df["House Name"].fillna("UNKNOWN").str.strip().str.upper()
     df["Gender"] = df["Gender"].fillna("U")   # U = UNKNOWN
     
-    # -------- CONVERT DATATYPES --------
+    
     df['Serial No'] = pd.to_numeric(df['Serial No'], errors='coerce').fillna(0).astype(int)
     df['Name'] = df['Name'].astype(str).str.strip()
     df["Guardian's Name"] = df["Guardian's Name"].astype(str).str.strip()
     df['OldWard No/ House No.'] = df['OldWard No/ House No.'].astype(str).str.strip()
     df['House Name'] = df['House Name'].astype(str).str.strip()
     
-    # -------- CLEAN AND STANDARDIZE GENDER --------
+    
     df['Gender'] = df['Gender'].astype(str).str.strip().str.upper()
     df['Gender'] = df['Gender'].replace({
         'FEMALE': 'F',
@@ -99,10 +80,10 @@ def clean_voter_data(filepath):
         'F': 'F',
         'M': 'M'
     })
-    # Any non-M/F set as Unknown
+    
     df['Gender'] = df['Gender'].apply(lambda x: x if x in ['M', 'F'] else 'U')
     
-    # -------- STANDARDIZE ID CARD --------
+    
     df['ID Card No.'] = df['ID Card No.'].astype(str).str.strip().str.upper()
     
     print("[+] Data cleaning completed")
@@ -111,14 +92,10 @@ def clean_voter_data(filepath):
     
     return df
 
-# ============================================================================
-# FEATURE ENGINEERING FOR ANOMALY DETECTION
-# ============================================================================
+
 
 def engineer_anomaly_features(df):
-    """
-    Create anomaly detection features from cleaned data
-    """
+    
     print("[*] Engineering features for anomaly detection...")
     
     df_features = df.copy()
@@ -170,30 +147,26 @@ def engineer_anomaly_features(df):
     
     return df_features
 
-# ============================================================================
-# 1. DATA LOADING AND FEATURE ENGINEERING
-# ============================================================================
+
 
 def load_and_prepare_data(filepath):
-    """Load voter data and prepare features for anomaly detection"""
+    
     print("[*] Loading voter data...")
     df = pd.read_csv(filepath)
     print(f"[+] Loaded {len(df)} voters")
     
-    # Clean voter data
+    
     df = clean_voter_data(filepath)
     
-    # Engineer anomaly detection features
+    
     df_features = engineer_anomaly_features(df)
     
     return df, df_features
 
-# ============================================================================
-# 2. FEATURE SELECTION AND SCALING
-# ============================================================================
+
 
 def prepare_features_for_model(df_features):
-    """Select and scale features for anomaly detection"""
+    
     print("[*] Preparing features for modeling...")
     
     feature_columns = [
@@ -219,7 +192,7 @@ def prepare_features_for_model(df_features):
     X = df_features[feature_columns].copy()
     X = X.fillna(0)
     
-    # Scale features
+    
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
@@ -227,15 +200,13 @@ def prepare_features_for_model(df_features):
     
     return X_scaled, feature_columns, scaler
 
-# ============================================================================
-# 3. ANOMALY DETECTION MODELS
-# ============================================================================
+
 
 def train_anomaly_detectors(X_scaled):
-    """Train Isolation Forest and LOF models"""
+
     print("[*] Training anomaly detection models...")
     
-    # Isolation Forest - excellent for high-dimensional outliers
+    
     print("  [*] Training Isolation Forest...")
     iso_forest = IsolationForest(
         n_estimators=100,
@@ -246,7 +217,7 @@ def train_anomaly_detectors(X_scaled):
     iso_predictions = iso_forest.fit_predict(X_scaled)
     iso_scores = iso_forest.score_samples(X_scaled)
     
-    # Local Outlier Factor - detects local density-based outliers
+    
     print("  [*] Training Local Outlier Factor...")
     lof = LocalOutlierFactor(
         n_neighbors=20,
@@ -261,32 +232,26 @@ def train_anomaly_detectors(X_scaled):
     
     return iso_forest, lof, iso_scores, lof_scores, iso_predictions, lof_predictions
 
-# ============================================================================
-# 4. ENSEMBLE SCORING
-# ============================================================================
 
 def create_ensemble_scores(iso_scores, lof_scores, iso_predictions, lof_predictions):
-    """Create ensemble anomaly score combining both models"""
+    
     print("[*] Creating ensemble anomaly scores...")
     
-    # Normalize scores to [0, 1]
+    
     iso_norm = (iso_scores - iso_scores.min()) / (iso_scores.max() - iso_scores.min())
     lof_norm = (lof_scores - lof_scores.min()) / (lof_scores.max() - lof_scores.min())
     
-    # Ensemble: average of both normalized scores
+    
     ensemble_score = (iso_norm + lof_norm) / 2
     
-    # Voting: flag if BOTH models agree on anomaly (-1 = anomaly in sklearn)
     both_anomaly = ((iso_predictions == -1) & (lof_predictions == -1)).astype(int)
     
     return ensemble_score, both_anomaly
 
-# ============================================================================
-# 5. THRESHOLD ANALYSIS
-# ============================================================================
+
 
 def analyze_thresholds(ensemble_score):
-    """Analyze different anomaly thresholds"""
+    
     print("[*] Analyzing anomaly thresholds...")
     
     thresholds = [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90]
@@ -309,12 +274,10 @@ def analyze_thresholds(ensemble_score):
     
     return threshold_analysis
 
-# ============================================================================
-# 6. PREDICTIONS AND OUTPUT
-# ============================================================================
+
 
 def generate_predictions(df, df_features, ensemble_score, both_anomaly, threshold=0.75):
-    """Generate final predictions and output"""
+    
     print(f"[*] Generating predictions with threshold={threshold}...")
     
     df_results = df.copy()
@@ -325,10 +288,9 @@ def generate_predictions(df, df_features, ensemble_score, both_anomaly, threshol
         lambda x: 'Critical' if x >= 0.85 else 'High' if x >= 0.75 else 'Medium' if x >= 0.60 else 'Low'
     )
     
-    # Sort by anomaly score
+
     df_results = df_results.sort_values('Anomaly_Score', ascending=False)
     
-    # Statistics
     n_potential_fakes = df_results['Is_Potential_Fake'].sum()
     n_critical = (df_results['Risk_Level'] == 'Critical').sum()
     n_high = (df_results['Risk_Level'] == 'High').sum()
@@ -341,17 +303,15 @@ def generate_predictions(df, df_features, ensemble_score, both_anomaly, threshol
     
     return df_results
 
-# ============================================================================
-# 7. VISUALIZATION
-# ============================================================================
+
 
 def create_visualizations(df_results, feature_columns, X_scaled):
-    """Create comprehensive visualizations"""
+    
     print("[*] Creating visualizations...")
     
     fig = plt.figure(figsize=(16, 12))
     
-    # 1. Anomaly Score Distribution
+    
     ax1 = plt.subplot(2, 3, 1)
     ax1.hist(df_results['Anomaly_Score'], bins=50, color='steelblue', edgecolor='black', alpha=0.7)
     ax1.axvline(0.75, color='red', linestyle='--', linewidth=2, label='Threshold (0.75)')
@@ -361,7 +321,7 @@ def create_visualizations(df_results, feature_columns, X_scaled):
     ax1.legend()
     ax1.grid(alpha=0.3)
     
-    # 2. Risk Level Distribution
+   
     ax2 = plt.subplot(2, 3, 2)
     risk_counts = df_results['Risk_Level'].value_counts()
     colors = {'Critical': '#d62728', 'High': '#ff7f0e', 'Medium': '#ffbb78', 'Low': '#2ca02c'}
@@ -371,7 +331,7 @@ def create_visualizations(df_results, feature_columns, X_scaled):
     ax2.set_title('Voters by Risk Level')
     ax2.grid(alpha=0.3, axis='x')
     
-    # 3. Top Anomalous Features (PCA visualization)
+    
     ax3 = plt.subplot(2, 3, 3)
     pca = PCA(n_components=2)
     X_pca = pca.fit_transform(X_scaled)
@@ -382,7 +342,7 @@ def create_visualizations(df_results, feature_columns, X_scaled):
     ax3.set_title('Anomalies in 2D Feature Space')
     plt.colorbar(scatter, ax=ax3, label='Anomaly Score')
     
-    # 4. Top 10 Anomalous Voters
+
     ax4 = plt.subplot(2, 3, 4)
     top_10 = df_results.head(10)
     y_pos = np.arange(len(top_10))
@@ -395,7 +355,7 @@ def create_visualizations(df_results, feature_columns, X_scaled):
     ax4.invert_yaxis()
     ax4.grid(alpha=0.3, axis='x')
     
-    # 5. Age Distribution by Risk Level
+    
     ax5 = plt.subplot(2, 3, 5)
     for risk in ['Low', 'Medium', 'High', 'Critical']:
         data = df_results[df_results['Risk_Level'] == risk]['Age']
@@ -406,7 +366,7 @@ def create_visualizations(df_results, feature_columns, X_scaled):
     ax5.legend()
     ax5.grid(alpha=0.3)
     
-    # 6. Cumulative Anomaly Scores
+    
     ax6 = plt.subplot(2, 3, 6)
     sorted_scores = np.sort(df_results['Anomaly_Score'].values)
     ax6.plot(sorted_scores, linewidth=2, color='darkblue')
@@ -423,17 +383,13 @@ def create_visualizations(df_results, feature_columns, X_scaled):
     print("[+] Visualization saved: anomaly_detection_analysis.png")
     plt.close()
 
-# ============================================================================
-# 8. FEATURE IMPORTANCE
-# ============================================================================
-
 def create_feature_importance_plot(df_features, feature_columns):
-    """Analyze which features are most important for anomalies"""
+    
     print("[*] Analyzing feature importance...")
     
     fig, ax = plt.subplots(figsize=(12, 8))
     
-    # Calculate variance for each feature (proxy for importance in anomaly detection)
+    
     feature_variance = []
     for col in feature_columns:
         var = df_features[col].var()
@@ -451,46 +407,44 @@ def create_feature_importance_plot(df_features, feature_columns):
     print("[+] Feature importance plot saved: feature_importance.png")
     plt.close()
 
-# ============================================================================
-# 9. MAIN EXECUTION
-# ============================================================================
+
 
 def main():
-    """Main execution pipeline"""
+    
     print("\n" + "="*70)
     print("FAKE VOTER DETECTION - UNSUPERVISED ANOMALY DETECTION")
     print("="*70 + "\n")
     
     start_time = datetime.now()
     
-    # 1. Load and prepare data
+   
     df, df_features = load_and_prepare_data('VOTERS.csv')
     
-    # 2. Prepare features
+   
     X_scaled, feature_columns, scaler = prepare_features_for_model(df_features)
     
-    # 3. Train models
+    
     iso_forest, lof, iso_scores, lof_scores, iso_pred, lof_pred = train_anomaly_detectors(X_scaled)
     
-    # 4. Create ensemble scores
+    
     ensemble_score, both_anomaly = create_ensemble_scores(iso_scores, lof_scores, iso_pred, lof_pred)
     
-    # 5. Analyze thresholds
+    
     threshold_analysis = analyze_thresholds(ensemble_score)
     
-    # 6. Generate predictions (using 0.75 threshold - adjust as needed)
+  
     df_results = generate_predictions(df, df_features, ensemble_score, both_anomaly, threshold=0.75)
     
-    # 7. Create visualizations
+    
     create_visualizations(df_results, feature_columns, X_scaled)
     create_feature_importance_plot(df_features, feature_columns)
     
-    # 8. Save results
+    
     print("\n[*] Saving results...")
     df_results.to_csv('VOTERS_ANOMALY_SCORES.csv', index=False)
     print("[+] Predictions saved: VOTERS_ANOMALY_SCORES.csv")
     
-    # Save trained models
+   
     joblib.dump({
         'iso_forest': iso_forest,
         'lof': lof,
@@ -500,7 +454,7 @@ def main():
     }, 'anomaly_detector_model.joblib')
     print("[+] Model saved: anomaly_detector_model.joblib")
     
-    # 9. Summary Report
+    
     print("\n" + "="*70)
     print("DETECTION SUMMARY")
     print("="*70)
@@ -538,22 +492,19 @@ def main():
     print("="*70 + "\n")
 
 def get_anomaly_reasons(row, df_features, feature_columns):
-    """
-    Extract and explain which features contributed to high anomaly score
-    Returns a list of reasons why this voter is flagged
-    """
+    
     reasons = []
     
     serial_no = int(row['Serial No'])
     
-    # Match by Serial No to find corresponding feature row
+    
     matching_rows = df_features[df_features['Serial No'] == serial_no]
     if len(matching_rows) == 0:
         return ["Unable to find feature data for this voter"]
     
     feature_row = matching_rows.iloc[0]
     
-    # Check each anomaly feature and add reason if flagged
+   
     checks = [
         ('age_below_18', 1, lambda: f"Age below 18 years old (Age: {int(feature_row['Age'])})"),
         ('age_above_100', 1, lambda: f"Age above 100 years old (Age: {int(feature_row['Age'])})"),
@@ -583,3 +534,4 @@ def get_anomaly_reasons(row, df_features, feature_columns):
 
 if __name__ == "__main__":
     main()
+
