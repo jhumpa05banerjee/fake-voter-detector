@@ -12,6 +12,46 @@ import re
 import warnings
 warnings.filterwarnings('ignore')
 
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import streamlit as st
+
+# ---------------------------------------
+# ADD THIS FUNCTION HERE
+def anomaly_detection(df_results):
+    st.subheader("📊 Anomaly Detection Graph")
+
+    # Score column (already correct)
+    score_col = "Anomaly_Score"
+
+    if score_col not in df_results.columns:
+        st.error(f"❌ Score column '{score_col}' not found in df_results")
+        return
+
+    try:
+        # Smaller graph size
+        fig, ax = plt.subplots(figsize=(5, 3))
+
+        # Scatter plot: anomaly score vs fake prediction
+        ax.scatter(
+            df_results[score_col],
+            df_results["Is_Potential_Fake"].astype(int),
+            s=12,     # smaller dots
+            alpha=0.7
+        )
+
+        ax.set_xlabel("Anomaly Score")
+        ax.set_ylabel("Fake (1 = Fraud, 0 = Normal)")
+        ax.set_title("Anomaly Detection Scatter Plot")
+
+        plt.tight_layout()
+
+        st.pyplot(fig)  # no container_width → stays small
+
+    except Exception as e:
+        st.error(f"Graph Error: {e}")
+
 
 
 def get_id_type(id_str):
@@ -306,108 +346,75 @@ def generate_predictions(df, df_features, ensemble_score, both_anomaly, threshol
 
 
 def create_visualizations(df_results, feature_columns, X_scaled):
-    
-    print("[*] Creating visualizations...")
-    
+
+    st.subheader("📊 Anomaly Detection Visualizations")
+
     fig = plt.figure(figsize=(16, 12))
-    
-    
+
     ax1 = plt.subplot(2, 3, 1)
-    ax1.hist(df_results['Anomaly_Score'], bins=50, color='steelblue', edgecolor='black', alpha=0.7)
-    ax1.axvline(0.75, color='red', linestyle='--', linewidth=2, label='Threshold (0.75)')
-    ax1.set_xlabel('Anomaly Score')
-    ax1.set_ylabel('Frequency')
-    ax1.set_title('Anomaly Score Distribution')
-    ax1.legend()
-    ax1.grid(alpha=0.3)
-    
-   
+    ax1.hist(df_results['Anomaly_Score'], bins=50)
+    ax1.axvline(0.75, color='red', linestyle='--')
+    ax1.set_title("Anomaly Score Distribution")
+
     ax2 = plt.subplot(2, 3, 2)
     risk_counts = df_results['Risk_Level'].value_counts()
-    colors = {'Critical': '#d62728', 'High': '#ff7f0e', 'Medium': '#ffbb78', 'Low': '#2ca02c'}
-    risk_colors = [colors.get(level, 'gray') for level in risk_counts.index]
-    ax2.barh(risk_counts.index, risk_counts.values, color=risk_colors)
-    ax2.set_xlabel('Count')
-    ax2.set_title('Voters by Risk Level')
-    ax2.grid(alpha=0.3, axis='x')
-    
-    
+    ax2.barh(risk_counts.index, risk_counts.values)
+    ax2.set_title("Voters by Risk Level")
+
     ax3 = plt.subplot(2, 3, 3)
     pca = PCA(n_components=2)
     X_pca = pca.fit_transform(X_scaled)
-    scatter = ax3.scatter(X_pca[:, 0], X_pca[:, 1], c=df_results['Anomaly_Score'], 
-                         cmap='RdYlGn_r', alpha=0.6, s=50)
-    ax3.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.1%})')
-    ax3.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.1%})')
-    ax3.set_title('Anomalies in 2D Feature Space')
-    plt.colorbar(scatter, ax=ax3, label='Anomaly Score')
-    
+    s = ax3.scatter(X_pca[:, 0], X_pca[:, 1], c=df_results['Anomaly_Score'], cmap="RdYlGn_r")
+    plt.colorbar(s, ax=ax3)
+    ax3.set_title("PCA View of Anomalies")
 
     ax4 = plt.subplot(2, 3, 4)
-    top_10 = df_results.head(10)
-    y_pos = np.arange(len(top_10))
-    scores = top_10['Anomaly_Score'].values
-    ax4.barh(y_pos, scores, color='crimson', alpha=0.7)
-    ax4.set_yticks(y_pos)
-    ax4.set_yticklabels([f"#{i+1}" for i in range(len(top_10))], fontsize=9)
-    ax4.set_xlabel('Anomaly Score')
-    ax4.set_title('Top 10 Most Anomalous Voters')
+    top10 = df_results.head(10)
+    ax4.barh(top10.index, top10["Anomaly_Score"], color="crimson")
     ax4.invert_yaxis()
-    ax4.grid(alpha=0.3, axis='x')
-    
-    
+    ax4.set_title("Top 10 Anomalies")
+
     ax5 = plt.subplot(2, 3, 5)
     for risk in ['Low', 'Medium', 'High', 'Critical']:
-        data = df_results[df_results['Risk_Level'] == risk]['Age']
-        ax5.hist(data, bins=20, alpha=0.5, label=risk)
-    ax5.set_xlabel('Age')
-    ax5.set_ylabel('Frequency')
-    ax5.set_title('Age Distribution by Risk Level')
+        vals = df_results[df_results["Risk_Level"] == risk]["Age"]
+        ax5.hist(vals, bins=15, alpha=0.5, label=risk)
     ax5.legend()
-    ax5.grid(alpha=0.3)
-    
-    
+    ax5.set_title("Age Distribution by Risk")
+
     ax6 = plt.subplot(2, 3, 6)
-    sorted_scores = np.sort(df_results['Anomaly_Score'].values)
-    ax6.plot(sorted_scores, linewidth=2, color='darkblue')
-    ax6.fill_between(range(len(sorted_scores)), sorted_scores, alpha=0.3, color='steelblue')
-    ax6.axhline(0.75, color='red', linestyle='--', linewidth=2, label='Threshold')
-    ax6.set_xlabel('Voter Index (sorted)')
-    ax6.set_ylabel('Anomaly Score')
-    ax6.set_title('Cumulative Anomaly Scores')
-    ax6.legend()
-    ax6.grid(alpha=0.3)
-    
+    sorted_scores = np.sort(df_results['Anomaly_Score'])
+    ax6.plot(sorted_scores)
+    ax6.axhline(0.75, color='red', linestyle='--')
+    ax6.set_title("Cumulative Anomaly Scores")
+
     plt.tight_layout()
-    plt.savefig('anomaly_detection_analysis.png', dpi=300, bbox_inches='tight')
-    print("[+] Visualization saved: anomaly_detection_analysis.png")
+
+    st.pyplot(fig)
+
+    plt.savefig("anomaly_detection_analysis.png", dpi=300)
     plt.close()
 
 def create_feature_importance_plot(df_features, feature_columns):
-    
-    print("[*] Analyzing feature importance...")
-    
+
+    st.subheader("📌 Feature Importance Chart")
+
     fig, ax = plt.subplots(figsize=(12, 8))
-    
-    
-    feature_variance = []
+
+    variances = []
     for col in feature_columns:
-        var = df_features[col].var()
-        feature_variance.append({'Feature': col, 'Variance': var})
-    
-    df_var = pd.DataFrame(feature_variance).sort_values('Variance', ascending=True).tail(15)
-    
-    ax.barh(df_var['Feature'], df_var['Variance'], color='teal', alpha=0.7)
-    ax.set_xlabel('Feature Variance (Importance Proxy)')
-    ax.set_title('Top 15 Most Important Features for Anomaly Detection')
-    ax.grid(alpha=0.3, axis='x')
-    
+        variances.append({'Feature': col, 'Variance': df_features[col].var()})
+
+    variance_df = pd.DataFrame(variances).sort_values('Variance', ascending=False).head(15)
+
+    ax.barh(variance_df['Feature'], variance_df['Variance'], color='teal')
+    ax.set_title("Top 15 Important Features")
+    ax.set_xlabel("Variance")
+
     plt.tight_layout()
-    plt.savefig('feature_importance.png', dpi=300, bbox_inches='tight')
-    print("[+] Feature importance plot saved: feature_importance.png")
+    st.pyplot(fig)
+
+    plt.savefig("feature_importance.png", dpi=300)
     plt.close()
-
-
 
 def main():
     
