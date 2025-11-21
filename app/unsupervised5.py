@@ -19,10 +19,7 @@ import streamlit as st
 
 
 def normalize_columns(df):
-    """
-    Normalize raw CSV column names to a safe canonical form:
-    strip, lower, replace non-alphanumeric with underscore, collapse multiple underscores.
-    """
+    
     cols = (
         df.columns
         .astype(str)
@@ -36,10 +33,8 @@ def normalize_columns(df):
     return df
 
 def map_columns(df):
-    """
-    Return mapping: standard_field -> actual_normalized_column_name (or None)
-    """
-    # Ensure columns already normalized
+    
+    
     df = df.copy()
     df = normalize_columns(df)
 
@@ -68,27 +63,26 @@ def map_columns(df):
 
     print("[+] Column Mapping:", mapped)
     return mapped
-# ---------------------------------------
-# ADD THIS FUNCTION HERE
-def anomaly_detection(df_results):
-    st.subheader("📊 Anomaly Detection Graph")
 
-    # Score column (already correct)
+def anomaly_detection(df_results):
+    st.subheader("Anomaly Detection Graph")
+
+    
     score_col = "Anomaly_Score"
 
     if score_col not in df_results.columns:
-        st.error(f"❌ Score column '{score_col}' not found in df_results")
+        st.error(f"Score column '{score_col}' not found in df_results")
         return
 
     try:
-        # Smaller graph size
+        
         fig, ax = plt.subplots(figsize=(5, 3))
 
-        # Scatter plot: anomaly score vs fake prediction
+        
         ax.scatter(
             df_results[score_col],
             df_results["Is_Potential_Fake"].astype(int),
-            s=12,     # smaller dots
+            s=12,     
             alpha=0.7
         )
 
@@ -98,7 +92,7 @@ def anomaly_detection(df_results):
 
         plt.tight_layout()
 
-        st.pyplot(fig)  # no container_width → stays small
+        st.pyplot(fig)  
 
     except Exception as e:
         st.error(f"Graph Error: {e}")
@@ -121,22 +115,18 @@ def get_id_type(id_str):
     
 
 def clean_voter_data(filepath):
-    """
-    Load CSV path/file-like, normalize column names, auto-map required fields,
-    and return a standardized dataframe with these columns:
-    ['Age','Name','Guardian','Gender','ID','Serial_No','House_Name','House_No','Cleaned_ID']
-    """
+    
     print("[*] Loading raw voter data...")
     df_raw = pd.read_csv(filepath)
     print(f"[+] Loaded {len(df_raw)} voters")
 
-    # Normalize column names
+    
     df_raw = normalize_columns(df_raw)
 
-    # Map columns
+    
     mapping = map_columns(df_raw)
 
-    # Build standardized dataframe (use TitleCase keys to match rest of pipeline)
+    
     df_std = pd.DataFrame()
     df_std["Age"] = df_raw[mapping["age"]] if mapping["age"] else 0
     df_std["Name"] = df_raw[mapping["name"]] if mapping["name"] else "UNKNOWN"
@@ -147,7 +137,7 @@ def clean_voter_data(filepath):
     df_std["House_Name"] = df_raw[mapping["house_name"]] if mapping["house_name"] else "UNKNOWN"
     df_std["House_No"] = df_raw[mapping["house_no"]] if mapping["house_no"] else "UNKNOWN"
 
-    # Type conversions + cleaning
+    
     df_std["Age"] = pd.to_numeric(df_std["Age"], errors="coerce").fillna(0).astype(int)
     df_std["Name"] = df_std["Name"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
     df_std["Guardian"] = df_std["Guardian"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
@@ -157,7 +147,7 @@ def clean_voter_data(filepath):
     df_std["House_Name"] = df_std["House_Name"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
     df_std["House_No"] = df_std["House_No"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
 
-    # create Cleaned_ID (no spaces, uppercase)
+   
     df_std["Cleaned_ID"] = df_std["ID"].astype(str).str.replace(r'\s+', '', regex=True).str.upper().fillna("")
 
     print("[+] Cleaning completed")
@@ -170,23 +160,23 @@ def engineer_anomaly_features(df):
 
     df_feat = df.copy()
 
-    # Ensure required base cols exist (safety)
+    
     for col, default in [("Age",0),("Name",""),("Guardian",""),("House_No",""),("Gender",""),("ID",""),("Cleaned_ID",""),("House_Name","")]:
         if col not in df_feat.columns:
             df_feat[col] = default
 
-    # Age features
+    
     df_feat["age_below_18"] = (df_feat["Age"] < 18).astype(int)
     df_feat["age_above_100"] = (df_feat["Age"] > 100).astype(int)
     df_feat["age_anomaly"] = ((df_feat["Age"] < 18) | (df_feat["Age"] > 120)).astype(int)
 
-    # Missing fields
+    
     df_feat["missing_name"] = (df_feat["Name"].astype(str).str.strip().str.upper() == "UNKNOWN").astype(int)
     df_feat["missing_guardian"] = (df_feat["Guardian"].astype(str).str.strip().str.upper() == "UNKNOWN").astype(int)
     df_feat["missing_house"] = (df_feat["House_No"].astype(str).str.strip().str.upper() == "UNKNOWN").astype(int)
     df_feat["missing_gender"] = (df_feat["Gender"].astype(str).str.strip().str.upper() == "U").astype(int)
 
-    # ID anomalies
+    
     df_feat["id_anomaly"] = (
     (
         df_feat["ID"].astype(str).str.strip().str.upper() == "UNKNOWN"
@@ -198,23 +188,23 @@ def engineer_anomaly_features(df):
     df_feat["id_length"] = df_feat["Cleaned_ID"].astype(str).apply(len)
     df_feat["invalid_id_format"] = df_feat["id_length"].apply(lambda x: 1 if x != 10 else 0)
 
-    # House name anomalies + lengths
+    
     df_feat["house_name_length"] = df_feat["House_Name"].astype(str).apply(len)
     df_feat["house_name_anomaly"] = df_feat["house_name_length"].apply(lambda x: 1 if x < 3 else 0)
 
-    # Crowded house: count per House_No
+    
     df_feat["crowded_house"] = df_feat.groupby("House_No")["House_No"].transform("count")
     df_feat["crowded_house"] = (df_feat["crowded_house"] > 10).astype(int)
 
-    # Duplicates
+   
     df_feat["duplicate_id"] = df_feat["Cleaned_ID"].duplicated(keep=False).astype(int)
     df_feat["duplicate_combo"] = df_feat.duplicated(subset=["Name","Guardian","House_No"], keep=False).astype(int)
 
-    # Lengths
+    
     df_feat["name_length"] = df_feat["Name"].astype(str).apply(len)
     df_feat["guardian_length"] = df_feat["Guardian"].astype(str).apply(len)
 
-    # Backwards compatibility aliases (old model expects these names)
+    
     df_feat["missing_houseno"] = df_feat["missing_house"]
 
     print("[+] Feature engineering completed. Total features:", len(df_feat.columns))
@@ -242,14 +232,14 @@ def load_and_prepare_data(filepath):
 
 
 def prepare_features_for_model(df_features):
-    # exact feature list expected by model (keep same names as used when model was saved)
+    
     feature_columns = [
         'age_below_18',
         'age_above_100',
         'age_anomaly',
         'missing_name',
         'missing_guardian',
-        'missing_houseno',   # old name kept for compatibility
+        'missing_houseno',   
         'missing_gender',
         'id_anomaly',
         'invalid_id_format',
@@ -263,7 +253,7 @@ def prepare_features_for_model(df_features):
         'id_length'
     ]
 
-    # Ensure all columns exist (fill zeros if missing)
+   
     for col in feature_columns:
         if col not in df_features.columns:
             df_features[col] = 0
@@ -287,7 +277,7 @@ def train_anomaly_detectors(X_scaled):
     print("  [*] Training Isolation Forest...")
     iso_forest = IsolationForest(
         n_estimators=100,
-        contamination=0.02,  # Expect ~2% anomalies
+        contamination=0.02,  
         random_state=42,
         n_jobs=-1
     )
@@ -384,7 +374,7 @@ def generate_predictions(df, df_features, ensemble_score, both_anomaly, threshol
 
 def create_visualizations(df_results, feature_columns, X_scaled):
 
-    st.subheader("📊 Anomaly Detection Visualizations")
+    st.subheader("Anomaly Detection Visualizations")
 
     fig = plt.figure(figsize=(16, 12))
 
@@ -433,7 +423,7 @@ def create_visualizations(df_results, feature_columns, X_scaled):
 
 def create_feature_importance_plot(df_features, feature_columns):
 
-    st.subheader("📌 Feature Importance Chart")
+    st.subheader("Feature Importance Chart")
 
     fig, ax = plt.subplots(figsize=(12, 8))
 
