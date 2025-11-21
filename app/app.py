@@ -6,7 +6,7 @@ from sklearn.decomposition import PCA
 import numpy as np
 
 st.set_page_config(page_title="Fake Voter Detector", layout="wide")
-# ------------------ CUSTOM LIGHT BACKGROUND THEME ------------------
+
 page_bg = """
 <style>
     body {
@@ -46,9 +46,7 @@ st.markdown(page_bg, unsafe_allow_html=True)
 
 
 
-# ---------------------------------------------------------
-# LOAD MODEL
-# ---------------------------------------------------------
+
 @st.cache_resource
 def load_model():
     try:
@@ -73,18 +71,14 @@ iso_forest = model_data["iso_forest"]
 lof = model_data["lof"]
 
 
-# ---------------------------------------------------------
-# FILE UPLOAD
-# ---------------------------------------------------------
+
 uploaded = st.file_uploader("Upload Voter CSV File", type=["csv"])
 if not uploaded:
     st.info("Upload CSV to continue.")
     st.stop()
 
 
-# ---------------------------------------------------------
-# IMPORT FUNCTIONS FROM unsupervised5
-# ---------------------------------------------------------
+
 from unsupervised5 import (
     clean_voter_data,
     engineer_anomaly_features,
@@ -94,9 +88,7 @@ from unsupervised5 import (
 )
 
 
-# ---------------------------------------------------------
-# CLEANING + FEATURE ENGINEERING
-# ---------------------------------------------------------
+
 df_clean = clean_voter_data(uploaded)
 st.write("COLUMNS FOUND:", df_clean.columns.tolist())
 
@@ -108,9 +100,7 @@ df_feat = engineer_anomaly_features(df_clean)
 X_scaled, feature_cols_new, scaler_new = prepare_features_for_model(df_feat)
 
 
-# ---------------------------------------------------------
-# MODEL SCORES
-# ---------------------------------------------------------
+
 iso_scores = iso_forest.score_samples(X_scaled)
 iso_pred = iso_forest.predict(X_scaled)
 
@@ -127,19 +117,17 @@ df_results = generate_predictions(
 )
 
 
-# ---------------------------------------------------------
-# ---------------------- GRAPHS SECTION -------------------
-# ---------------------------------------------------------
+
 st.header("Anomaly Detection Visualizations")
 
-# Center columns (1 : 2 : 1)
+
 center = st.columns([1, 2, 1])
 
-# Small graph size
+
 small = (4, 2.5)
 
 
-# ------------------ 1) ANOMALY SCORE HISTOGRAM ------------------
+
 with center[1]:
     fig1, ax1 = plt.subplots(figsize=small)
     ax1.hist(df_results["Anomaly_Score"], bins=40, edgecolor="black")
@@ -147,7 +135,7 @@ with center[1]:
     st.pyplot(fig1)
 
 
-# ------------------ 2) RISK LEVEL COUNTS ------------------
+
 with center[1]:
     fig2, ax2 = plt.subplots(figsize=small)
     risk_counts = df_results["Risk_Level"].value_counts()
@@ -156,7 +144,7 @@ with center[1]:
     st.pyplot(fig2)
 
 
-# ------------------ 3) PCA VISUALIZATION ------------------
+
 with center[1]:
     try:
         X_scaled_plot = scaler.transform(df_feat[feature_cols])
@@ -178,7 +166,7 @@ with center[1]:
         st.error(f"PCA plotting error: {e}")
 
 
-# ------------------ 4) TOP 10 SUSPICIOUS ------------------
+
 with center[1]:
     top10 = df_results.sort_values("Anomaly_Score", ascending=False).head(10)
     fig4, ax4 = plt.subplots(figsize=small)
@@ -188,7 +176,7 @@ with center[1]:
     st.pyplot(fig4)
 
 
-# ------------------ 5) AGE VS RISK LEVEL ------------------
+
 with center[1]:
     fig5, ax5 = plt.subplots(figsize=small)
     for r in df_results["Risk_Level"].unique():
@@ -198,7 +186,7 @@ with center[1]:
     st.pyplot(fig5)
 
 
-# ------------------ 6) SCORE CURVE ------------------
+
 with center[1]:
     fig6, ax6 = plt.subplots(figsize=small)
     sorted_scores = np.sort(df_results["Anomaly_Score"])
@@ -208,9 +196,7 @@ with center[1]:
 
 
 
-# ---------------------------------------------------------
-# RESULT TABLE
-# ---------------------------------------------------------
+
 st.subheader("Detection Results (Top 50 Risky Records)")
 st.dataframe(df_results.head(50))
 
