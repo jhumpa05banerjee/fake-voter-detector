@@ -6,6 +6,44 @@ from sklearn.decomposition import PCA
 import numpy as np
 
 st.set_page_config(page_title="Fake Voter Detector", layout="wide")
+# ------------------ CUSTOM LIGHT BACKGROUND THEME ------------------
+page_bg = """
+<style>
+    body {
+        background: linear-gradient(to bottom right, #dbe9ff, #e8f0ff, #eef5ff);
+    }
+
+    .stApp {
+        background: linear-gradient(to bottom right, #dcecff, #eaf3ff) !important;
+    }
+
+    .css-18e3th9 {
+        background: rgba(255, 255, 255, 0.0) !important;
+    }
+
+    header, footer {
+        visibility: hidden;
+    }
+
+    /* Card-like containers */
+    .block-container {
+        background: rgba(255, 255, 255, 0.15);
+        padding: 2rem;
+        border-radius: 15px;
+        backdrop-filter: blur(8px);
+    }
+
+    /* File uploader box */
+    .stFileUploader {
+        background: rgba(255, 255, 255, 0.3) !important;
+        padding: 15px;
+        border-radius: 12px;
+    }
+</style>
+"""
+
+st.markdown(page_bg, unsafe_allow_html=True)
+
 
 
 # ---------------------------------------------------------
@@ -16,11 +54,11 @@ def load_model():
     try:
         return joblib.load("anomaly_detector_model.joblib")
     except:
-        st.error("❌ Model file not found! Run unsupervised.py first.")
+        st.error("Model file not found! Run unsupervised.py first.")
         return None
 
 
-st.title("🗳️ Fake Voter Detection - Unsupervised ML Model")
+st.title("Fake Voter Detection")
 
 model_data = load_model()
 if not model_data:
@@ -38,7 +76,7 @@ lof = model_data["lof"]
 # ---------------------------------------------------------
 # FILE UPLOAD
 # ---------------------------------------------------------
-uploaded = st.file_uploader("📤 Upload Voter CSV File", type=["csv"])
+uploaded = st.file_uploader("Upload Voter CSV File", type=["csv"])
 if not uploaded:
     st.info("Upload CSV to continue.")
     st.stop()
@@ -62,7 +100,7 @@ from unsupervised5 import (
 df_clean = clean_voter_data(uploaded)
 st.write("COLUMNS FOUND:", df_clean.columns.tolist())
 
-st.subheader("📌 Cleaned Data Sample")
+st.subheader("Cleaned Data Sample")
 st.dataframe(df_clean.head())
 
 df_feat = engineer_anomaly_features(df_clean)
@@ -92,79 +130,88 @@ df_results = generate_predictions(
 # ---------------------------------------------------------
 # ---------------------- GRAPHS SECTION -------------------
 # ---------------------------------------------------------
-st.header("📊 Anomaly Detection Visualizations")
+st.header("Anomaly Detection Visualizations")
+
+# Center columns (1 : 2 : 1)
+center = st.columns([1, 2, 1])
 
 # Small graph size
-small = (5, 3)
+small = (4, 2.5)
 
 
 # ------------------ 1) ANOMALY SCORE HISTOGRAM ------------------
-fig1, ax1 = plt.subplots(figsize=small)
-ax1.hist(df_results["Anomaly_Score"], bins=40, edgecolor="black")
-ax1.set_title("Anomaly Score Distribution")
-st.pyplot(fig1)
+with center[1]:
+    fig1, ax1 = plt.subplots(figsize=small)
+    ax1.hist(df_results["Anomaly_Score"], bins=40, edgecolor="black")
+    ax1.set_title("Anomaly Score Distribution")
+    st.pyplot(fig1)
 
 
 # ------------------ 2) RISK LEVEL COUNTS ------------------
-fig2, ax2 = plt.subplots(figsize=small)
-risk_counts = df_results["Risk_Level"].value_counts()
-ax2.bar(risk_counts.index, risk_counts.values)
-ax2.set_title("Risk Level Count")
-st.pyplot(fig2)
+with center[1]:
+    fig2, ax2 = plt.subplots(figsize=small)
+    risk_counts = df_results["Risk_Level"].value_counts()
+    ax2.bar(risk_counts.index, risk_counts.values)
+    ax2.set_title("Risk Level Count")
+    st.pyplot(fig2)
 
 
 # ------------------ 3) PCA VISUALIZATION ------------------
-try:
-    X_scaled_plot = scaler.transform(df_feat[feature_cols])
-    pca = PCA(n_components=2)
-    X_pca = pca.fit_transform(X_scaled_plot)
+with center[1]:
+    try:
+        X_scaled_plot = scaler.transform(df_feat[feature_cols])
+        pca = PCA(n_components=2)
+        X_pca = pca.fit_transform(X_scaled_plot)
 
-    fig3, ax3 = plt.subplots(figsize=small)
-    sc = ax3.scatter(
-        X_pca[:, 0], X_pca[:, 1],
-        c=df_results["Anomaly_Score"],
-        cmap="viridis",
-        s=20
-    )
-    plt.colorbar(sc, ax=ax3)
-    ax3.set_title("PCA - Anomaly Distribution")
-    st.pyplot(fig3)
+        fig3, ax3 = plt.subplots(figsize=small)
+        sc = ax3.scatter(
+            X_pca[:, 0], X_pca[:, 1],
+            c=df_results["Anomaly_Score"],
+            cmap="viridis",
+            s=20
+        )
+        plt.colorbar(sc, ax=ax3)
+        ax3.set_title("PCA - Anomaly Distribution")
+        st.pyplot(fig3)
 
-except Exception as e:
-    st.error(f"PCA plotting error: {e}")
+    except Exception as e:
+        st.error(f"PCA plotting error: {e}")
 
 
 # ------------------ 4) TOP 10 SUSPICIOUS ------------------
-top10 = df_results.sort_values("Anomaly_Score", ascending=False).head(10)
-fig4, ax4 = plt.subplots(figsize=small)
-ax4.barh(top10["Serial_No"], top10["Anomaly_Score"])
-
-ax4.invert_yaxis()
-ax4.set_title("Top 10 Suspicious Voters")
-st.pyplot(fig4)
+with center[1]:
+    top10 = df_results.sort_values("Anomaly_Score", ascending=False).head(10)
+    fig4, ax4 = plt.subplots(figsize=small)
+    ax4.barh(top10["Serial_No"], top10["Anomaly_Score"])
+    ax4.invert_yaxis()
+    ax4.set_title("Top 10 Suspicious Voters")
+    st.pyplot(fig4)
 
 
 # ------------------ 5) AGE VS RISK LEVEL ------------------
-fig5, ax5 = plt.subplots(figsize=small)
-for r in df_results["Risk_Level"].unique():
-    ax5.hist(df_results[df_results["Risk_Level"] == r]["Age"], alpha=0.4, label=r)
-ax5.legend(fontsize=7)
-ax5.set_title("Age Distribution by Risk")
-st.pyplot(fig5)
+with center[1]:
+    fig5, ax5 = plt.subplots(figsize=small)
+    for r in df_results["Risk_Level"].unique():
+        ax5.hist(df_results[df_results["Risk_Level"] == r]["Age"], alpha=0.4, label=r)
+    ax5.legend(fontsize=6)
+    ax5.set_title("Age Distribution by Risk")
+    st.pyplot(fig5)
 
 
 # ------------------ 6) SCORE CURVE ------------------
-fig6, ax6 = plt.subplots(figsize=small)
-sorted_scores = np.sort(df_results["Anomaly_Score"])
-ax6.plot(sorted_scores)
-ax6.set_title("Sorted Anomaly Score Curve")
-st.pyplot(fig6)
+with center[1]:
+    fig6, ax6 = plt.subplots(figsize=small)
+    sorted_scores = np.sort(df_results["Anomaly_Score"])
+    ax6.plot(sorted_scores)
+    ax6.set_title("Sorted Anomaly Score Curve")
+    st.pyplot(fig6)
+
 
 
 # ---------------------------------------------------------
 # RESULT TABLE
 # ---------------------------------------------------------
-st.subheader("🔍 Detection Results (Top 50 Risky Records)")
+st.subheader("Detection Results (Top 50 Risky Records)")
 st.dataframe(df_results.head(50))
 
 st.download_button(
@@ -174,6 +221,7 @@ st.download_button(
     mime="text/csv",
 )
 
-st.success("🎉 Analysis Complete!")
+st.success("Analysis Complete!")
+
 
 
