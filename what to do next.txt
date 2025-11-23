@@ -1,4 +1,0 @@
-1. add fuzzy matching
-2. make model learn
-
-3. use new data for testing
