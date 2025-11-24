@@ -42,11 +42,9 @@ def normalize_columns(df):
     return df
 
 def map_and_standardize(df):
-   
     df = df.copy()
     df = normalize_columns(df)
 
-    
     def find_col(keys):
         for k in keys:
             for c in df.columns:
@@ -75,7 +73,6 @@ def map_and_standardize(df):
     std["House_Name"] = df[mapping["house_name"]] if mapping["house_name"] else "UNKNOWN"
     std["House_No"] = df[mapping["house_no"]] if mapping["house_no"] else "UNKNOWN"
 
-    
     std["Age"] = pd.to_numeric(std["Age"], errors="coerce").fillna(0).astype(int)
     std["Name"] = std["Name"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
     std["Guardian"] = std["Guardian"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
@@ -89,32 +86,25 @@ def map_and_standardize(df):
     return std
 
 def compute_anomaly_count(df_std):
-    
     df = df_std.copy()
 
-   
     df["r_age_below_18"] = (df["Age"] < 18).astype(int)
 
-    
-    house_counts = df.groupby("House_No")["House_No"].transform("count")
-    df["r_duplicate_house"] = (house_counts > 1).astype(int)
+    # R2 removed completely
+    df["r_duplicate_house"] = 0
 
-    
     df["r_duplicate_id"] = df["Cleaned_ID"].duplicated(keep=False).astype(int)
 
-    
-    df["anomaly_count"] = df[["r_age_below_18", "r_duplicate_house", "r_duplicate_id"]].sum(axis=1).astype(int)
+    # R2 removed from total
+    df["anomaly_count"] = df[["r_age_below_18", "r_duplicate_id"]].sum(axis=1).astype(int)
 
-    
-    df["Anomaly_Count"] = df["anomaly_count"]   
+    df["Anomaly_Count"] = df["anomaly_count"]
     df["Is_Potential_Fake"] = (df["anomaly_count"] >= 2).astype(int)
     df["Risk_Level"] = df["anomaly_count"].apply(lambda x: "High Risk" if x >= 2 else "Normal")
 
-    
     def triggered_rules(row):
         triggers = []
         if row["r_age_below_18"]: triggers.append("R1:Age<18")
-        if row["r_duplicate_house"]: triggers.append("R2:DuplicateHouse")
         if row["r_duplicate_id"]: triggers.append("R3:DuplicateID")
         return ",".join(triggers) if triggers else "None"
 
@@ -124,7 +114,6 @@ def compute_anomaly_count(df_std):
 
 
 uploaded = st.file_uploader("Upload Voter CSV File (or leave blank to use fallback local file)", type=["csv"])
-
 
 fallback_local_path = "/mnt/data/final_book1.csv"
 
@@ -136,7 +125,6 @@ if uploaded is not None:
         st.error(f"Could not read uploaded file: {e}")
         st.stop()
 else:
-   
     try:
         raw = pd.read_csv(fallback_local_path)
         source_label = f"Local sample: {fallback_local_path}"
@@ -145,15 +133,12 @@ else:
         st.error("Please upload a CSV file.")
         st.stop()
 
-
 df_clean = map_and_standardize(raw)
 st.subheader("Cleaned Data")
 st.caption(f"Source: {source_label}")
 st.dataframe(df_clean.head(50))
 
-
 df_with_anomalies = compute_anomaly_count(df_clean)
-
 
 st.subheader("Detection Results (sample)")
 cols_to_show = ["Age", "Name", "Guardian", "Gender", "ID", "Serial_No", "House_Name", "House_No", "Cleaned_ID",
@@ -161,7 +146,6 @@ cols_to_show = ["Age", "Name", "Guardian", "Gender", "ID", "Serial_No", "House_N
 
 cols_to_show = [c for c in cols_to_show if c in df_with_anomalies.columns]
 st.dataframe(df_with_anomalies[cols_to_show].head(200))
-
 
 st.header("Anomaly Visualizations")
 col1, col2 = st.columns(2)
@@ -178,41 +162,27 @@ with col1:
     ax.legend(fontsize=6)
     st.pyplot(fig, use_container_width=False)
 
-
 with col2:
     st.subheader("Age Distribution by Risk Level")
-
     fig2, ax2 = plt.subplots(figsize=(4, 2.5))
-
     risk_groups = df_with_anomalies["Risk_Level"].unique()
 
     for risk in risk_groups:
         subset = df_with_anomalies[df_with_anomalies["Risk_Level"] == risk]
-        ax2.hist(
-            subset["Age"],
-            alpha=0.5,
-            bins=10,
-            label=risk
-        )
+        ax2.hist(subset["Age"], alpha=0.5, bins=10, label=risk)
 
     ax2.set_xlabel("Age", fontsize=8)
     ax2.set_ylabel("Count", fontsize=8)
     ax2.legend(fontsize=6)
     ax2.set_title("Age Distribution by Risk", fontsize=9)
-
     st.pyplot(fig2, use_container_width=False)
-
-
-
 
 st.header("Top 10 Suspicious Voters")
 top10 = df_with_anomalies.sort_values("Anomaly_Count", ascending=False).head(10)
 st.table(top10[cols_to_show].reset_index(drop=True))
 
-
 csv = df_with_anomalies.to_csv(index=False)
-st.download_button("⬇ Download Full Results (CSV)", data=csv, file_name="VOTERS_ANOMALY_COUNTS.csv", mime="text/csv")
-
+st.download_button("Download Full Results (CSV)", data=csv, file_name="VOTERS_ANOMALY_COUNTS.csv", mime="text/csv")
 
 st.header("Inspect a Record")
 row_index = st.number_input("Record index to inspect (0-based)", min_value=0, max_value=max(0, len(df_with_anomalies)-1), value=0)
@@ -220,4 +190,4 @@ if st.button("Show record details"):
     r = df_with_anomalies.iloc[int(row_index)]
     st.write(r[cols_to_show].to_dict())
 
-st.success("Analysis complete — using anomaly_count (threshold 2).")
+st.success("Analysis complete.")
