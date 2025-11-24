@@ -27,7 +27,6 @@ page_bg = """
 st.markdown(page_bg, unsafe_allow_html=True)
 
 st.title("Fake Voter Detection")
-st.write("Upload the voter CSV.")
 
 
 def normalize_columns(df):
@@ -126,7 +125,7 @@ def compute_anomaly_count(df_std):
 
 
 
-uploaded = st.file_uploader("Upload Voter CSV File (or leave blank to use fallback local file)", type=["csv"])
+uploaded = st.file_uploader("Upload Voter CSV File", type=["csv"])
 
 fallback_local_path = "/mnt/data/final_book1.csv"
 
