@@ -26,8 +26,8 @@ page_bg = """
 """
 st.markdown(page_bg, unsafe_allow_html=True)
 
-st.title("Fake Voter Detection — Anomaly Count Based")
-st.write("Upload the voter CSV. App expects columns like Age, Name, Guardian, Gender, ID, Serial_No, House_Name, House_No, Cleaned_ID.")
+st.title("Fake Voter Detection")
+st.write("Upload the voter CSV.")
 
 def normalize_columns(df):
     cols = (
@@ -142,7 +142,7 @@ else:
         source_label = f"Local sample: {fallback_local_path}"
         st.info(f"No file uploaded — using fallback local CSV: {fallback_local_path}")
     except Exception as e:
-        st.error("Please upload a CSV file. (Fallback local file not found.)")
+        st.error("Please upload a CSV file.")
         st.stop()
 
 
@@ -180,21 +180,27 @@ with col1:
 
 
 with col2:
-    st.subheader("Risk Level Overview")
-    counts = df_with_anomalies["Risk_Level"].value_counts()
-    fig2, ax2 = plt.subplots(figsize=(3, 2.5))
-    ax2.pie(counts, labels=counts.index, autopct="%1.1f%%", startangle=140, textprops={"fontsize": 7})
-    ax2.set_title("Risk Split", fontsize=9)
+    st.subheader("Age Distribution by Risk Level")
+
+    fig2, ax2 = plt.subplots(figsize=(4, 2.5))
+
+    risk_groups = df_with_anomalies["Risk_Level"].unique()
+
+    for risk in risk_groups:
+        subset = df_with_anomalies[df_with_anomalies["Risk_Level"] == risk]
+        ax2.hist(
+            subset["Age"],
+            alpha=0.5,
+            bins=10,
+            label=risk
+        )
+
+    ax2.set_xlabel("Age", fontsize=8)
+    ax2.set_ylabel("Count", fontsize=8)
+    ax2.legend(fontsize=6)
+    ax2.set_title("Age Distribution by Risk", fontsize=9)
+
     st.pyplot(fig2, use_container_width=False)
-
-
-st.subheader("Anomaly Count per Record (Bar)")
-fig3, ax3 = plt.subplots(figsize=(4, 2))
-ax3.bar(df_with_anomalies.index, df_with_anomalies["Anomaly_Count"], width=0.6)
-ax3.axhline(2, color="red", linestyle="--")
-ax3.set_xlabel("Record Index", fontsize=8)
-ax3.set_ylabel("Anomaly Count", fontsize=8)
-st.pyplot(fig3, use_container_width=False)
 
 
 
