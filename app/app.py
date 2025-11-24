@@ -204,10 +204,6 @@ st.markdown("""
   - **High Risk** → Multiple anomalies detected
 """)
 
-st.subheader("Suspicious Voters")
-
-
-
 st.header("Suspicious Voters")
 
 suspicious = df_with_anomalies[df_with_anomalies["Anomaly_Count"] > 0] \
