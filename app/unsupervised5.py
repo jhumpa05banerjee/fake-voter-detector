@@ -206,28 +206,56 @@ def engineer_anomaly_features(df):
 
     
     df_feat["missing_houseno"] = df_feat["missing_house"]
+    df_feat["anomaly_count"] = df_feat[[
+    "age_below_18", "age_above_100", "age_anomaly",
+    "missing_name", "missing_guardian", "missing_houseno",
+    "missing_gender", "id_anomaly", "invalid_id_format",
+    "house_name_anomaly", "crowded_house", "duplicate_id",
+    "duplicate_combo"
+]].sum(axis=1)
+
 
     print("[+] Feature engineering completed. Total features:", len(df_feat.columns))
     return df_feat
 
 
+def plot_anomaly_count_graph(df_results):
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.plot(df_results["anomaly_count"], marker="o", markersize=2)
+    ax.axhline(2, linestyle="--", color="red")  # threshold = 2
+
+    ax.set_title("Anomaly Count Graph")
+    ax.set_xlabel("Record Index")
+    ax.set_ylabel("Anomaly Count")
+
+    st.pyplot(fig)
 
 
 
 
 def load_and_prepare_data(filepath):
-    
+
     print("[*] Loading voter data...")
+
+    
     df = pd.read_csv(filepath)
     print(f"[+] Loaded {len(df)} voters")
+
     
-    
-    df = clean_voter_data(filepath)
-    
-    
-    df_features = engineer_anomaly_features(df)
-    
-    return df, df_features
+    df = clean_voter_data(df)
+
+   
+    df = apply_rules(df)
+
+   
+    rule_cols = ["R1_Duplicate_ID", "R2_Duplicate_House", "R3_Duplicate_Serial",
+                 "R4_Missing_Guardian", "R5_Invalid_Age"]
+
+    df["Anomaly_Count"] = df[rule_cols].sum(axis=1)
+
+    return df
 
 
 
@@ -341,34 +369,41 @@ def analyze_thresholds(ensemble_score):
     
     return threshold_analysis
 
+def apply_rules(df):
+    df["R1_Duplicate_ID"] = df.duplicated("ID", keep=False)
+    df["R2_Duplicate_House"] = df.duplicated("house name", keep=False)
+    df["R3_Duplicate_Serial"] = df.duplicated("Serial_no", keep=False)
+    df["R4_Missing_Guardian"] = df["Guardian"].isna() | (df["Guardian"] == "")
+    df["R5_Invalid_Age"] = (df["Age"] < 18) | (df["Age"] > 110)
+    return df
 
 
-def generate_predictions(df, df_features, ensemble_score, both_anomaly, threshold=0.75):
-    
-    print(f"[*] Generating predictions with threshold={threshold}...")
-    
+def get_triggered_rules(row):
+    rules = []
+    if row["R1_Duplicate_ID"]: rules.append("R1")
+    if row["R2_Duplicate_House"]: rules.append("R2")
+    if row["R3_Duplicate_Serial"]: rules.append("R3")
+    if row["R4_Missing_Guardian"]: rules.append("R4")
+    if row["R5_Invalid_Age"]: rules.append("R5")
+    return ",".join(rules)
+
+
+def generate_predictions(df, anomaly_count, threshold=2):
+
     df_results = df.copy()
-    df_results['Anomaly_Score'] = ensemble_score
-    df_results['Flagged_Both_Models'] = both_anomaly
-    df_results['Is_Potential_Fake'] = (ensemble_score >= threshold).astype(int)
-    df_results['Risk_Level'] = df_results['Anomaly_Score'].apply(
-        lambda x: 'Critical' if x >= 0.85 else 'High' if x >= 0.75 else 'Medium' if x >= 0.60 else 'Low'
-    )
-    
+    df_results['Anomaly_Count'] = anomaly_count
 
-    df_results = df_results.sort_values('Anomaly_Score', ascending=False)
-    
-    n_potential_fakes = df_results['Is_Potential_Fake'].sum()
-    n_critical = (df_results['Risk_Level'] == 'Critical').sum()
-    n_high = (df_results['Risk_Level'] == 'High').sum()
-    
-    print(f"\n[+] Prediction Results:")
-    print(f"    Total voters: {len(df_results)}")
-    print(f"    Potential fakes (threshold={threshold}): {n_potential_fakes} ({n_potential_fakes/len(df_results)*100:.2f}%)")
-    print(f"    Critical risk: {n_critical}")
-    print(f"    High risk: {n_high}")
-    
+    df_results['Is_Potential_Fake'] = (anomaly_count >= threshold).astype(int)
+
+    df_results['Risk_Level'] = df_results['Anomaly_Count'].apply(
+        lambda x: 'Critical' if x >= 6 else
+                  'High' if x >= 4 else
+                  'Medium' if x >= 2 else
+                  'Low'
+    )
+
     return df_results
+
 
 
 
@@ -383,23 +418,6 @@ def create_visualizations(df_results, feature_columns, X_scaled):
     ax1.axvline(0.75, color='red', linestyle='--')
     ax1.set_title("Anomaly Score Distribution")
 
-    ax2 = plt.subplot(2, 3, 2)
-    risk_counts = df_results['Risk_Level'].value_counts()
-    ax2.barh(risk_counts.index, risk_counts.values)
-    ax2.set_title("Voters by Risk Level")
-
-    ax3 = plt.subplot(2, 3, 3)
-    pca = PCA(n_components=2)
-    X_pca = pca.fit_transform(X_scaled)
-    s = ax3.scatter(X_pca[:, 0], X_pca[:, 1], c=df_results['Anomaly_Score'], cmap="RdYlGn_r")
-    plt.colorbar(s, ax=ax3)
-    ax3.set_title("PCA View of Anomalies")
-
-    ax4 = plt.subplot(2, 3, 4)
-    top10 = df_results.head(10)
-    ax4.barh(top10.index, top10["Anomaly_Score"], color="crimson")
-    ax4.invert_yaxis()
-    ax4.set_title("Top 10 Anomalies")
 
     ax5 = plt.subplot(2, 3, 5)
     for risk in ['Low', 'Medium', 'High', 'Critical']:
@@ -408,11 +426,6 @@ def create_visualizations(df_results, feature_columns, X_scaled):
     ax5.legend()
     ax5.set_title("Age Distribution by Risk")
 
-    ax6 = plt.subplot(2, 3, 6)
-    sorted_scores = np.sort(df_results['Anomaly_Score'])
-    ax6.plot(sorted_scores)
-    ax6.axhline(0.75, color='red', linestyle='--')
-    ax6.set_title("Cumulative Anomaly Scores")
 
     plt.tight_layout()
 
@@ -461,16 +474,15 @@ def main():
     iso_forest, lof, iso_scores, lof_scores, iso_pred, lof_pred = train_anomaly_detectors(X_scaled)
     
     
-    ensemble_score, both_anomaly = create_ensemble_scores(iso_scores, lof_scores, iso_pred, lof_pred)
-    
-    
-    threshold_analysis = analyze_thresholds(ensemble_score)
+    anomaly_count = detect_anomaly_count(df_features, threshold=2)
     
   
-    df_results = generate_predictions(df, df_features, ensemble_score, both_anomaly, threshold=0.75)
+    df_results = generate_predictions(df, anomaly_count, threshold=2)
+
     
     
-    create_visualizations(df_results, feature_columns, X_scaled)
+    plot_anomaly_count_graph(df_results)
+
     create_feature_importance_plot(df_features, feature_columns)
     
     
@@ -524,6 +536,28 @@ def main():
     elapsed = (datetime.now() - start_time).total_seconds()
     print(f"\nTotal execution time: {elapsed:.2f} seconds")
     print("="*70 + "\n")
+def detect_anomaly_count(df_features, threshold=2):
+    
+    numeric_cols = ['Age', 'name_length', 'guardian_length', 'house_name_length', 'id_length']
+
+    
+    df_numeric = df_features[numeric_cols].copy()
+
+    
+    mean_vals = df_numeric.mean()
+    std_vals = df_numeric.std().replace(0, 1)
+
+    
+    Z = (df_numeric - mean_vals) / std_vals
+
+    
+    anomaly_flags = (abs(Z) > threshold).astype(int)
+
+    
+    anomaly_count = anomaly_flags.sum(axis=1)
+
+    return anomaly_count
+
 
 def get_anomaly_reasons(row, df_features, feature_columns):
     
