@@ -103,8 +103,14 @@ def compute_anomaly_count(df_std):
     df["anomaly_count"] = df[["r_age_below_18", "r_duplicate_id"]].sum(axis=1).astype(int)
 
     df["Anomaly_Count"] = df["anomaly_count"]
-    df["Is_Potential_Fake"] = (df["anomaly_count"] >= 2).astype(int)
-    df["Risk_Level"] = df["anomaly_count"].apply(lambda x: "High Risk" if x >= 2 else "Normal")
+    df["Is_Potential_Fake"] = (df["anomaly_count"] >= 1).astype(int)
+
+    df["Risk_Level"] = df["anomaly_count"].apply(
+    lambda x: 
+        "High Risk" if x >= 2 else
+        ("Suspicious" if x == 1 else "Normal")
+)
+
 
     def triggered_rules(row):
         triggers = []
@@ -184,6 +190,22 @@ with col2:
     ax2.set_ylabel("Count", fontsize=8)
     ax2.legend(fontsize=6)
     st.pyplot(fig2)
+
+st.markdown("""
+### Meaning of Labels
+
+- **Is_Potential_Fake = 0** → *Not Suspicious*
+- **Is_Potential_Fake = 1** →  *Suspicious (Age < 18 OR Duplicate ID)*
+- **Anomaly_Count = 2+** → *High Risk / Strong Fake Probability*
+
+- **Risk_Level**  
+  - **Normal** → No strong evidence  
+  - **Suspicious** → At least 1 anomaly  
+  - **High Risk** → Multiple anomalies detected
+""")
+
+st.subheader("Suspicious Voters")
+
 
 
 st.header("Suspicious Voters")
