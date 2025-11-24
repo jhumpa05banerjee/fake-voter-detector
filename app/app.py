@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
-import joblib
-import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
 import numpy as np
+import matplotlib.pyplot as plt
+from datetime import datetime
+import re
 
 st.set_page_config(page_title="Fake Voter Detector", layout="wide")
 
@@ -12,202 +12,206 @@ page_bg = """
     body {
         background: linear-gradient(to bottom right, #dbe9ff, #e8f0ff, #eef5ff);
     }
-
     .stApp {
         background: linear-gradient(to bottom right, #dcecff, #eaf3ff) !important;
     }
-
-    .css-18e3th9 {
-        background: rgba(255, 255, 255, 0.0) !important;
-    }
-
-    header, footer {
-        visibility: hidden;
-    }
-
-    /* Card-like containers */
+    header, footer { visibility: hidden; }
     .block-container {
-        background: rgba(255, 255, 255, 0.15);
-        padding: 2rem;
-        border-radius: 15px;
-        backdrop-filter: blur(8px);
-    }
-
-    /* File uploader box */
-    .stFileUploader {
-        background: rgba(255, 255, 255, 0.3) !important;
-        padding: 15px;
+        background: rgba(255,255,255,0.12);
+        padding: 1.6rem;
         border-radius: 12px;
+        backdrop-filter: blur(6px);
     }
 </style>
 """
-
 st.markdown(page_bg, unsafe_allow_html=True)
 
+st.title("Fake Voter Detection — Anomaly Count Based")
+st.write("Upload the voter CSV. App expects columns like Age, Name, Guardian, Gender, ID, Serial_No, House_Name, House_No, Cleaned_ID.")
 
+def normalize_columns(df):
+    cols = (
+        df.columns.astype(str)
+        .str.strip()
+        .str.lower()
+        .str.replace(r'[^a-z0-9]+', '_', regex=True)
+        .str.replace(r'_{2,}', '_', regex=True)
+        .str.strip('_')
+    )
+    df.columns = cols
+    return df
 
+def map_and_standardize(df):
+   
+    df = df.copy()
+    df = normalize_columns(df)
 
-@st.cache_resource
-def load_model():
-    try:
-        return joblib.load("anomaly_detector_model.joblib")
-    except:
-        st.error("Model file not found! Run unsupervised.py first.")
+    
+    def find_col(keys):
+        for k in keys:
+            for c in df.columns:
+                if k in c:
+                    return c
         return None
 
+    mapping = {
+        "age": find_col(["age", "voter_age", "age_years"]),
+        "name": find_col(["name", "voter_name", "full_name"]),
+        "guardian": find_col(["guardian", "father_name", "husband_name", "parent_name"]),
+        "gender": find_col(["gender", "sex"]),
+        "id": find_col(["id", "epic", "voter_id", "id_card_no", "epic_no"]),
+        "serial_no": find_col(["serial", "serial_no", "s_no", "sno", "sl_no"]),
+        "house_name": find_col(["house_name", "building", "home", "house"]),
+        "house_no": find_col(["house_no", "address", "ward", "old_ward_name"])
+    }
 
-st.title("Fake Voter Detection")
+    std = pd.DataFrame()
+    std["Age"] = df[mapping["age"]] if mapping["age"] else 0
+    std["Name"] = df[mapping["name"]] if mapping["name"] else "UNKNOWN"
+    std["Guardian"] = df[mapping["guardian"]] if mapping["guardian"] else "UNKNOWN"
+    std["Gender"] = df[mapping["gender"]] if mapping["gender"] else "U"
+    std["ID"] = df[mapping["id"]] if mapping["id"] else "UNKNOWN"
+    std["Serial_No"] = df[mapping["serial_no"]] if mapping["serial_no"] else 0
+    std["House_Name"] = df[mapping["house_name"]] if mapping["house_name"] else "UNKNOWN"
+    std["House_No"] = df[mapping["house_no"]] if mapping["house_no"] else "UNKNOWN"
 
-model_data = load_model()
-if not model_data:
-    st.stop()
+    
+    std["Age"] = pd.to_numeric(std["Age"], errors="coerce").fillna(0).astype(int)
+    std["Name"] = std["Name"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
+    std["Guardian"] = std["Guardian"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
+    std["Gender"] = std["Gender"].astype(str).fillna("U").str.strip().str.upper()
+    std["ID"] = std["ID"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
+    std["Serial_No"] = pd.to_numeric(std["Serial_No"], errors="coerce").fillna(0).astype(int)
+    std["House_Name"] = std["House_Name"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
+    std["House_No"] = std["House_No"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
+    std["Cleaned_ID"] = std["ID"].astype(str).str.replace(r'\s+', '', regex=True).str.upper().fillna("")
 
-st.success("✓ Model Loaded Successfully!")
+    return std
 
-threshold = model_data["threshold"]
-scaler = model_data["scaler"]
-feature_cols = model_data["feature_columns"]
-iso_forest = model_data["iso_forest"]
-lof = model_data["lof"]
+def compute_anomaly_count(df_std):
+    
+    df = df_std.copy()
 
+   
+    df["r_age_below_18"] = (df["Age"] < 18).astype(int)
 
+    
+    house_counts = df.groupby("House_No")["House_No"].transform("count")
+    df["r_duplicate_house"] = (house_counts > 1).astype(int)
 
-uploaded = st.file_uploader("Upload Voter CSV File", type=["csv"])
-if not uploaded:
-    st.info("Upload CSV to continue.")
-    st.stop()
+    
+    df["r_duplicate_id"] = df["Cleaned_ID"].duplicated(keep=False).astype(int)
 
+    
+    df["anomaly_count"] = df[["r_age_below_18", "r_duplicate_house", "r_duplicate_id"]].sum(axis=1).astype(int)
 
+    
+    df["Anomaly_Count"] = df["anomaly_count"]   
+    df["Is_Potential_Fake"] = (df["anomaly_count"] >= 2).astype(int)
+    df["Risk_Level"] = df["anomaly_count"].apply(lambda x: "High Risk" if x >= 2 else "Normal")
 
-from unsupervised5 import (
-    clean_voter_data,
-    engineer_anomaly_features,
-    prepare_features_for_model,
-    create_ensemble_scores,
-    generate_predictions
-)
+    
+    def triggered_rules(row):
+        triggers = []
+        if row["r_age_below_18"]: triggers.append("R1:Age<18")
+        if row["r_duplicate_house"]: triggers.append("R2:DuplicateHouse")
+        if row["r_duplicate_id"]: triggers.append("R3:DuplicateID")
+        return ",".join(triggers) if triggers else "None"
 
+    df["Triggered_Rules"] = df.apply(triggered_rules, axis=1)
 
-
-df_clean = clean_voter_data(uploaded)
-st.write("COLUMNS FOUND:", df_clean.columns.tolist())
-
-st.subheader("Cleaned Data Sample")
-st.dataframe(df_clean.head())
-
-df_feat = engineer_anomaly_features(df_clean)
-
-X_scaled, feature_cols_new, scaler_new = prepare_features_for_model(df_feat)
-
-
-
-iso_scores = iso_forest.score_samples(X_scaled)
-iso_pred = iso_forest.predict(X_scaled)
-
-lof.fit(X_scaled)
-lof_scores = lof.negative_outlier_factor_
-lof_pred = lof.fit_predict(X_scaled)
-
-ensemble_score, both_anomaly = create_ensemble_scores(
-    iso_scores, lof_scores, iso_pred, lof_pred
-)
-
-df_results = generate_predictions(
-    df_clean, df_feat, ensemble_score, both_anomaly, threshold
-)
-
-
-
-st.header("Anomaly Detection Visualizations")
-
-
-center = st.columns([1, 2, 1])
-
-
-small = (4, 2.5)
+    return df
 
 
-
-with center[1]:
-    fig1, ax1 = plt.subplots(figsize=small)
-    ax1.hist(df_results["Anomaly_Score"], bins=40, edgecolor="black")
-    ax1.set_title("Anomaly Score Distribution")
-    st.pyplot(fig1)
+uploaded = st.file_uploader("Upload Voter CSV File (or leave blank to use fallback local file)", type=["csv"])
 
 
+fallback_local_path = "/mnt/data/final_book1.csv"
 
-with center[1]:
-    fig2, ax2 = plt.subplots(figsize=small)
-    risk_counts = df_results["Risk_Level"].value_counts()
-    ax2.bar(risk_counts.index, risk_counts.values)
-    ax2.set_title("Risk Level Count")
-    st.pyplot(fig2)
-
-
-
-with center[1]:
+if uploaded is not None:
     try:
-        X_scaled_plot = scaler.transform(df_feat[feature_cols])
-        pca = PCA(n_components=2)
-        X_pca = pca.fit_transform(X_scaled_plot)
-
-        fig3, ax3 = plt.subplots(figsize=small)
-        sc = ax3.scatter(
-            X_pca[:, 0], X_pca[:, 1],
-            c=df_results["Anomaly_Score"],
-            cmap="viridis",
-            s=20
-        )
-        plt.colorbar(sc, ax=ax3)
-        ax3.set_title("PCA - Anomaly Distribution")
-        st.pyplot(fig3)
-
+        raw = pd.read_csv(uploaded)
+        source_label = "Uploaded file"
     except Exception as e:
-        st.error(f"PCA plotting error: {e}")
+        st.error(f"Could not read uploaded file: {e}")
+        st.stop()
+else:
+   
+    try:
+        raw = pd.read_csv(fallback_local_path)
+        source_label = f"Local sample: {fallback_local_path}"
+        st.info(f"No file uploaded — using fallback local CSV: {fallback_local_path}")
+    except Exception as e:
+        st.error("Please upload a CSV file. (Fallback local file not found.)")
+        st.stop()
+
+
+df_clean = map_and_standardize(raw)
+st.subheader("Cleaned Data")
+st.caption(f"Source: {source_label}")
+st.dataframe(df_clean.head(50))
+
+
+df_with_anomalies = compute_anomaly_count(df_clean)
+
+
+st.subheader("Detection Results (sample)")
+cols_to_show = ["Age", "Name", "Guardian", "Gender", "ID", "Serial_No", "House_Name", "House_No", "Cleaned_ID",
+                "Anomaly_Count", "Risk_Level", "Is_Potential_Fake", "Triggered_Rules"]
+
+cols_to_show = [c for c in cols_to_show if c in df_with_anomalies.columns]
+st.dataframe(df_with_anomalies[cols_to_show].head(200))
+
+
+st.header("Anomaly Visualizations")
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("Anomaly Count Distribution")
+    fig, ax = plt.subplots(figsize=(4, 2.5))
+    ax.hist(df_with_anomalies["Anomaly_Count"],
+            bins=range(0, df_with_anomalies["Anomaly_Count"].max()+2),
+            edgecolor="black")
+    ax.axvline(2, color="red", linestyle="--", label="Threshold = 2")
+    ax.set_xlabel("Anomaly Count", fontsize=8)
+    ax.set_ylabel("Records", fontsize=8)
+    ax.legend(fontsize=6)
+    st.pyplot(fig, use_container_width=False)
+
+
+with col2:
+    st.subheader("Risk Level Overview")
+    counts = df_with_anomalies["Risk_Level"].value_counts()
+    fig2, ax2 = plt.subplots(figsize=(3, 2.5))
+    ax2.pie(counts, labels=counts.index, autopct="%1.1f%%", startangle=140, textprops={"fontsize": 7})
+    ax2.set_title("Risk Split", fontsize=9)
+    st.pyplot(fig2, use_container_width=False)
+
+
+st.subheader("Anomaly Count per Record (Bar)")
+fig3, ax3 = plt.subplots(figsize=(4, 2))
+ax3.bar(df_with_anomalies.index, df_with_anomalies["Anomaly_Count"], width=0.6)
+ax3.axhline(2, color="red", linestyle="--")
+ax3.set_xlabel("Record Index", fontsize=8)
+ax3.set_ylabel("Anomaly Count", fontsize=8)
+st.pyplot(fig3, use_container_width=False)
 
 
 
-with center[1]:
-    top10 = df_results.sort_values("Anomaly_Score", ascending=False).head(10)
-    fig4, ax4 = plt.subplots(figsize=small)
-    ax4.barh(top10["Serial_No"], top10["Anomaly_Score"])
-    ax4.invert_yaxis()
-    ax4.set_title("Top 10 Suspicious Voters")
-    st.pyplot(fig4)
+
+st.header("Top 10 Suspicious Voters")
+top10 = df_with_anomalies.sort_values("Anomaly_Count", ascending=False).head(10)
+st.table(top10[cols_to_show].reset_index(drop=True))
 
 
-
-with center[1]:
-    fig5, ax5 = plt.subplots(figsize=small)
-    for r in df_results["Risk_Level"].unique():
-        ax5.hist(df_results[df_results["Risk_Level"] == r]["Age"], alpha=0.4, label=r)
-    ax5.legend(fontsize=6)
-    ax5.set_title("Age Distribution by Risk")
-    st.pyplot(fig5)
+csv = df_with_anomalies.to_csv(index=False)
+st.download_button("⬇ Download Full Results (CSV)", data=csv, file_name="VOTERS_ANOMALY_COUNTS.csv", mime="text/csv")
 
 
+st.header("Inspect a Record")
+row_index = st.number_input("Record index to inspect (0-based)", min_value=0, max_value=max(0, len(df_with_anomalies)-1), value=0)
+if st.button("Show record details"):
+    r = df_with_anomalies.iloc[int(row_index)]
+    st.write(r[cols_to_show].to_dict())
 
-with center[1]:
-    fig6, ax6 = plt.subplots(figsize=small)
-    sorted_scores = np.sort(df_results["Anomaly_Score"])
-    ax6.plot(sorted_scores)
-    ax6.set_title("Sorted Anomaly Score Curve")
-    st.pyplot(fig6)
-
-
-
-
-st.subheader("Detection Results (Top 50 Risky Records)")
-st.dataframe(df_results.head(50))
-
-st.download_button(
-    "⬇ Download Full Result CSV",
-    df_results.to_csv(index=False),
-    file_name="VOTERS_ANOMALY_RESULTS.csv",
-    mime="text/csv",
-)
-
-st.success("Analysis Complete!")
-
-
-
+st.success("Analysis complete — using anomaly_count (threshold 2).")
