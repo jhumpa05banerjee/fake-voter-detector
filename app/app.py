@@ -29,6 +29,7 @@ st.markdown(page_bg, unsafe_allow_html=True)
 st.title("Fake Voter Detection")
 st.write("Upload the voter CSV.")
 
+
 def normalize_columns(df):
     cols = (
         df.columns.astype(str)
@@ -40,6 +41,7 @@ def normalize_columns(df):
     )
     df.columns = cols
     return df
+
 
 def map_and_standardize(df):
     df = df.copy()
@@ -55,7 +57,7 @@ def map_and_standardize(df):
     mapping = {
         "age": find_col(["age", "voter_age", "age_years"]),
         "name": find_col(["name", "voter_name", "full_name"]),
-        "guardian": find_col(["guardian", "father_name", "husband_name", "parent_name"]),
+        "guardian": find_col(["guardian", "father", "husband", "parent"]),
         "gender": find_col(["gender", "sex"]),
         "id": find_col(["id", "epic", "voter_id", "id_card_no", "epic_no"]),
         "serial_no": find_col(["serial", "serial_no", "s_no", "sno", "sl_no"]),
@@ -74,28 +76,30 @@ def map_and_standardize(df):
     std["House_No"] = df[mapping["house_no"]] if mapping["house_no"] else "UNKNOWN"
 
     std["Age"] = pd.to_numeric(std["Age"], errors="coerce").fillna(0).astype(int)
-    std["Name"] = std["Name"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
-    std["Guardian"] = std["Guardian"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
-    std["Gender"] = std["Gender"].astype(str).fillna("U").str.strip().str.upper()
-    std["ID"] = std["ID"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
+    std["Name"] = std["Name"].astype(str).str.strip().str.upper()
+    std["Guardian"] = std["Guardian"].astype(str).str.strip().str.upper()
+    std["Gender"] = std["Gender"].astype(str).str.strip().str.upper()
+    std["ID"] = std["ID"].astype(str).str.strip().str.upper()
     std["Serial_No"] = pd.to_numeric(std["Serial_No"], errors="coerce").fillna(0).astype(int)
-    std["House_Name"] = std["House_Name"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
-    std["House_No"] = std["House_No"].astype(str).fillna("UNKNOWN").str.strip().str.upper()
-    std["Cleaned_ID"] = std["ID"].astype(str).str.replace(r'\s+', '', regex=True).str.upper().fillna("")
+    std["House_Name"] = std["House_Name"].astype(str).str.strip().str.upper()
+    std["House_No"] = std["House_No"].astype(str).str.strip().str.upper()
+
+    std["Cleaned_ID"] = std["ID"].str.replace(r'\s+', '', regex=True).str.upper()
 
     return std
+
 
 def compute_anomaly_count(df_std):
     df = df_std.copy()
 
     df["r_age_below_18"] = (df["Age"] < 18).astype(int)
 
-    # R2 removed completely
+    
     df["r_duplicate_house"] = 0
 
+    
     df["r_duplicate_id"] = df["Cleaned_ID"].duplicated(keep=False).astype(int)
 
-    # R2 removed from total
     df["anomaly_count"] = df[["r_age_below_18", "r_duplicate_id"]].sum(axis=1).astype(int)
 
     df["Anomaly_Count"] = df["anomaly_count"]
@@ -104,13 +108,16 @@ def compute_anomaly_count(df_std):
 
     def triggered_rules(row):
         triggers = []
-        if row["r_age_below_18"]: triggers.append("R1:Age<18")
-        if row["r_duplicate_id"]: triggers.append("R3:DuplicateID")
+        if row["r_age_below_18"]:
+            triggers.append("R1:Age<18")
+        if row["r_duplicate_id"]:
+            triggers.append("R3:DuplicateID")
         return ",".join(triggers) if triggers else "None"
 
     df["Triggered_Rules"] = df.apply(triggered_rules, axis=1)
 
     return df
+
 
 
 uploaded = st.file_uploader("Upload Voter CSV File (or leave blank to use fallback local file)", type=["csv"])
@@ -133,6 +140,8 @@ else:
         st.error("Please upload a CSV file.")
         st.stop()
 
+
+
 df_clean = map_and_standardize(raw)
 st.subheader("Cleaned Data")
 st.caption(f"Source: {source_label}")
@@ -140,12 +149,16 @@ st.dataframe(df_clean.head(50))
 
 df_with_anomalies = compute_anomaly_count(df_clean)
 
-st.subheader("Detection Results (sample)")
-cols_to_show = ["Age", "Name", "Guardian", "Gender", "ID", "Serial_No", "House_Name", "House_No", "Cleaned_ID",
-                "Anomaly_Count", "Risk_Level", "Is_Potential_Fake", "Triggered_Rules"]
 
-cols_to_show = [c for c in cols_to_show if c in df_with_anomalies.columns]
+cols_to_show = [
+    "Age", "Name", "Guardian", "Gender", "ID", "Serial_No",
+    "House_Name", "House_No", "Cleaned_ID", "Anomaly_Count",
+    "Risk_Level", "Is_Potential_Fake", "Triggered_Rules"
+]
+
+st.subheader("Detection Results (sample)")
 st.dataframe(df_with_anomalies[cols_to_show].head(200))
+
 
 st.header("Anomaly Visualizations")
 col1, col2 = st.columns(2)
@@ -154,38 +167,39 @@ with col1:
     st.subheader("Anomaly Count Distribution")
     fig, ax = plt.subplots(figsize=(4, 2.5))
     ax.hist(df_with_anomalies["Anomaly_Count"],
-            bins=range(0, df_with_anomalies["Anomaly_Count"].max()+2),
+            bins=range(0, df_with_anomalies["Anomaly_Count"].max() + 2),
             edgecolor="black")
-    ax.axvline(2, color="red", linestyle="--", label="Threshold = 2")
+    ax.axvline(2, color="red", linestyle="--")
     ax.set_xlabel("Anomaly Count", fontsize=8)
     ax.set_ylabel("Records", fontsize=8)
-    ax.legend(fontsize=6)
-    st.pyplot(fig, use_container_width=False)
+    st.pyplot(fig)
 
 with col2:
     st.subheader("Age Distribution by Risk Level")
     fig2, ax2 = plt.subplots(figsize=(4, 2.5))
-    risk_groups = df_with_anomalies["Risk_Level"].unique()
-
-    for risk in risk_groups:
+    for risk in df_with_anomalies["Risk_Level"].unique():
         subset = df_with_anomalies[df_with_anomalies["Risk_Level"] == risk]
         ax2.hist(subset["Age"], alpha=0.5, bins=10, label=risk)
-
     ax2.set_xlabel("Age", fontsize=8)
     ax2.set_ylabel("Count", fontsize=8)
     ax2.legend(fontsize=6)
-    ax2.set_title("Age Distribution by Risk", fontsize=9)
-    st.pyplot(fig2, use_container_width=False)
+    st.pyplot(fig2)
 
-st.header("Top 10 Suspicious Voters")
-top10 = df_with_anomalies.sort_values("Anomaly_Count", ascending=False).head(10)
-st.table(top10[cols_to_show].reset_index(drop=True))
+
+st.header("Suspicious Voters")
+
+suspicious = df_with_anomalies[df_with_anomalies["Anomaly_Count"] > 0] \
+                .sort_values("Anomaly_Count", ascending=False)
+
+st.table(suspicious[cols_to_show].reset_index(drop=True))
+
 
 csv = df_with_anomalies.to_csv(index=False)
 st.download_button("Download Full Results (CSV)", data=csv, file_name="VOTERS_ANOMALY_COUNTS.csv", mime="text/csv")
 
+
 st.header("Inspect a Record")
-row_index = st.number_input("Record index to inspect (0-based)", min_value=0, max_value=max(0, len(df_with_anomalies)-1), value=0)
+row_index = st.number_input("Record index", min_value=0, max_value=len(df_with_anomalies)-1, value=0)
 if st.button("Show record details"):
     r = df_with_anomalies.iloc[int(row_index)]
     st.write(r[cols_to_show].to_dict())
