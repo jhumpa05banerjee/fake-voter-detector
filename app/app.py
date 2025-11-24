@@ -204,6 +204,8 @@ st.markdown("""
   - **High Risk** → Multiple anomalies detected
 """)
 
+
+
 st.header("Suspicious Voters")
 
 suspicious = df_with_anomalies[df_with_anomalies["Anomaly_Count"] > 0] \
@@ -217,9 +219,9 @@ st.download_button("Download Full Results (CSV)", data=csv, file_name="VOTERS_AN
 
 
 st.header("Inspect a Record")
-row_index = st.number_input("Record index", min_value=0, max_value=len(df_with_anomalies)-1, value=0)
+row_index = st.number_input("Record index", min_value=1, max_value=len(df_with_anomalies)-1, value=1)
 if st.button("Show record details"):
-    r = df_with_anomalies.iloc[int(row_index)]
+    r = df_with_anomalies.iloc[int(row_index)-1]
     st.write(r[cols_to_show].to_dict())
 
 st.success("Analysis complete.")
